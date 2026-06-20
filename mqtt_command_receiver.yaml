@@ -1,0 +1,222 @@
+blueprint:
+  name: Universal Local-First MQTT Command Receiver
+  description: >
+    Listen to MQTT command payloads and dispatch Home Assistant services.
+    Supports climate (mode, temperature), switch (on/off), and light (on/off).
+  domain: automation
+  source_url: https://raw.githubusercontent.com/http418imateapot/homeassistant-mqtt-blueprints/main/mqtt_command_receiver.yaml
+
+  input:
+    mqtt_command_topic:
+      name: MQTT Command Topic
+      description: MQTT topic used for inbound commands.
+      default: homeassistant/commands
+      selector:
+        text:
+
+    all_command_areas:
+      name: All Areas
+      description: If enabled, commands are allowed for entities in any area.
+      default: true
+      selector:
+        boolean:
+
+    command_areas:
+      name: Allowed Areas
+      description: Choose allowed areas when All Areas is disabled.
+      default: []
+      selector:
+        area:
+          multiple: true
+
+    command_domains:
+      name: Allowed Domains
+      description: Select domains that can be controlled from MQTT commands.
+      default:
+        - all
+      selector:
+        select:
+          multiple: true
+          custom_value: false
+          options:
+            - label: All
+              value: all
+            - label: Climate
+              value: climate
+            - label: Switch
+              value: switch
+            - label: Light
+              value: light
+
+    verbose_debug_logs:
+      name: Verbose Debug Logs
+      description: Enable detailed debug logs including command field details.
+      default: false
+      selector:
+        boolean:
+
+mode: parallel
+max: 20
+
+trigger:
+  - platform: mqtt
+    topic: !input mqtt_command_topic
+    id: mqtt_command
+
+variables:
+  _command_topic: !input mqtt_command_topic
+  _all_command_areas: !input all_command_areas
+  _command_areas: !input command_areas
+  _command_domains: !input command_domains
+  _verbose_debug_logs: !input verbose_debug_logs
+
+condition: []
+
+action:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: mqtt_command
+        sequence:
+          - variables:
+              _payload: "{{ trigger.payload_json | default({}, true) }}"
+              _is_mapping: "{{ _payload is mapping }}"
+              _payload_len: "{{ trigger.payload | default('', true) | string | length }}"
+
+          - service: system_log.write
+            data:
+              level: debug
+              message: >
+                [MQTT_Bridge] command received topic={{ trigger.topic }} payload_length={{ _payload_len }}
+
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ _is_mapping }}"
+                sequence:
+                  - variables:
+                      kv_pairs: "{{ _payload | dictsort }}"
+                      parsed_keys: "{{ kv_pairs | map(attribute=0) | list }}"
+
+                  - service: system_log.write
+                    data:
+                      level: debug
+                      message: >
+                        [MQTT_Bridge] parsed_keys={{ parsed_keys }}
+
+                  - repeat:
+                      for_each: "{{ kv_pairs }}"
+                      sequence:
+                        - variables:
+                            entity_id: "{{ repeat.item[0] }}"
+                            data_map: "{{ repeat.item[1] }}"
+                            domain: "{{ (entity_id.split('.')[0]) if ('.' in entity_id) else '' }}"
+                          entity_area_id: "{{ area_id(entity_id) | default('', true) }}"
+                          selected_domains: "{{ _command_domains | map('lower') | list }}"
+                          area_allowed: "{{ _all_command_areas or (_command_areas | length == 0) or (entity_area_id in _command_areas) }}"
+                          domain_allowed: "{{ 'all' in selected_domains or domain in selected_domains }}"
+                          dispatch_allowed: "{{ area_allowed and domain_allowed }}"
+                            power_cmd: "{{ data_map.switch | default(data_map.power, true) | string | lower }}"
+                            hvac_cmd: "{{ data_map.mode | default(data_map.hvac_mode, true) | string | lower }}"
+
+                        - choose:
+                            - conditions:
+                                - condition: template
+                                  value_template: "{{ dispatch_allowed }}"
+                              sequence:
+                                - choose:
+                                    - conditions:
+                                        - condition: template
+                                          value_template: "{{ _verbose_debug_logs }}"
+                                      sequence:
+                                        - service: system_log.write
+                                          data:
+                                            level: debug
+                                            message: >
+                                              [MQTT_Bridge] dispatch entity={{ entity_id }}, domain={{ domain }}, fields={{ data_map | list }}
+                                  default:
+                                    - service: system_log.write
+                                      data:
+                                        level: debug
+                                        message: >
+                                          [MQTT_Bridge] dispatch entity={{ entity_id }}, domain={{ domain }}
+
+                                - choose:
+                                    - conditions:
+                                        - condition: template
+                                          value_template: "{{ domain == 'climate' }}"
+                                      sequence:
+                                        - if:
+                                            - condition: template
+                                              value_template: "{{ hvac_cmd | length > 0 and hvac_cmd not in ['none', 'unknown'] }}"
+                                          then:
+                                            - service: climate.set_hvac_mode
+                                              target:
+                                                entity_id: "{{ entity_id }}"
+                                              data:
+                                                hvac_mode: "{{ hvac_cmd }}"
+                                        - if:
+                                            - condition: template
+                                              value_template: "{{ 'temperature' in data_map and (data_map.temperature | string) | length > 0 }}"
+                                          then:
+                                            - service: climate.set_temperature
+                                              target:
+                                                entity_id: "{{ entity_id }}"
+                                              data:
+                                                temperature: "{{ data_map.temperature | float }}"
+
+                                    - conditions:
+                                        - condition: template
+                                          value_template: "{{ domain == 'switch' }}"
+                                      sequence:
+                                        - choose:
+                                            - conditions:
+                                                - condition: template
+                                                  value_template: "{{ power_cmd == 'on' }}"
+                                              sequence:
+                                                - service: switch.turn_on
+                                                  target:
+                                                    entity_id: "{{ entity_id }}"
+                                            - conditions:
+                                                - condition: template
+                                                  value_template: "{{ power_cmd == 'off' }}"
+                                              sequence:
+                                                - service: switch.turn_off
+                                                  target:
+                                                    entity_id: "{{ entity_id }}"
+
+                                    - conditions:
+                                        - condition: template
+                                          value_template: "{{ domain == 'light' }}"
+                                      sequence:
+                                        - choose:
+                                            - conditions:
+                                                - condition: template
+                                                  value_template: "{{ power_cmd == 'on' }}"
+                                              sequence:
+                                                - service: light.turn_on
+                                                  target:
+                                                    entity_id: "{{ entity_id }}"
+                                            - conditions:
+                                                - condition: template
+                                                  value_template: "{{ power_cmd == 'off' }}"
+                                              sequence:
+                                                - service: light.turn_off
+                                                  target:
+                                                    entity_id: "{{ entity_id }}"
+                          default:
+                            - service: system_log.write
+                              data:
+                                level: debug
+                                message: >
+                                  [MQTT_Bridge] skipped by whitelist entity={{ entity_id }}, domain={{ domain }}, area_id={{ entity_area_id }}
+
+              - conditions:
+                  - condition: template
+                    value_template: "{{ not _is_mapping }}"
+                sequence:
+                  - service: system_log.write
+                    data:
+                      level: debug
+                      message: >
+                        [MQTT_Bridge] payload_json is not an object, skip.

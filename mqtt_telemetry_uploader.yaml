@@ -1,0 +1,478 @@
+blueprint:
+  name: Universal Local-First MQTT Telemetry Uploader
+  description: >
+    Monitor selected Home Assistant entities and publish grouped telemetry to MQTT.
+    Topic format: {mqtt_base_topic}/telemetry/{location}/{category}
+    Payload fields: timestamp, area, trigger_reason, telemetry
+  domain: automation
+  source_url: https://raw.githubusercontent.com/http418imateapot/homeassistant-mqtt-blueprints/main/mqtt_telemetry_uploader.yaml
+
+  input:
+    mqtt_base_topic:
+      name: MQTT Base Topic
+      description: Base topic for outgoing telemetry.
+      default: homeassistant
+      selector:
+        text:
+
+    heartbeat_minutes:
+      name: Heartbeat Interval (minutes)
+      description: Periodic publish interval for non-stateful sensors.
+      default: "/1"
+      selector:
+        select:
+          options:
+            - "/1"
+            - "/5"
+            - "/10"
+            - "/30"
+
+    light_entities:
+      name: "[LIGHT] Entities"
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            domain: light
+
+    switch_entities:
+      name: "[SWITCH] Entities"
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            domain: switch
+
+    sensor_entities:
+      name: "[SENSOR] Entities"
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            domain: sensor
+
+    binary_sensor_entities:
+      name: "[BINARY_SENSOR] Entities"
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            domain: binary_sensor
+
+    climate_entities:
+      name: "[CLIMATE] Entities"
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            domain: climate
+
+mode: parallel
+max: 20
+
+variables:
+  _base_topic: !input mqtt_base_topic
+  _heartbeat_minutes: !input heartbeat_minutes
+  _lights: !input light_entities
+  _switches: !input switch_entities
+  _sensors: !input sensor_entities
+  _binary_sensors: !input binary_sensor_entities
+  _climates: !input climate_entities
+  _qos: "1"
+  _retain: false
+  _all_entities: >
+    {{
+      (
+        (_lights | default([], true))
+        + (_switches | default([], true))
+        + (_sensors | default([], true))
+        + (_binary_sensors | default([], true))
+        + (_climates | default([], true))
+      )
+      | unique
+      | list
+    }}
+
+trigger:
+  - platform: state
+    entity_id: !input light_entities
+    id: state_changed
+  - platform: state
+    entity_id: !input switch_entities
+    id: state_changed
+  - platform: state
+    entity_id: !input sensor_entities
+    id: state_changed
+  - platform: state
+    entity_id: !input binary_sensor_entities
+    id: state_changed
+  - platform: state
+    entity_id: !input climate_entities
+    id: state_changed
+  - platform: time_pattern
+    minutes: !input heartbeat_minutes
+    id: heartbeat
+
+condition: []
+
+action:
+  - variables:
+      _groups_json: >
+        {% set ns = namespace(groups = {}) %}
+        {% for e in _all_entities %}
+          {% if e %}
+            {% set domain = (e.split('.')[0]) if ('.' in e) else '' %}
+            {% set dc = state_attr(e, 'device_class') | default('', true) | string | lower %}
+            {% set fname = state_attr(e, 'friendly_name') | default(e, true) | string %}
+            {% set parts = fname.split('/') %}
+            {% set token = (parts[2] | trim | lower) if (parts | length > 2) else '' %}
+            {% set area = area_name(e) | default('', true) | string %}
+            {% if area | trim == '' %}
+              {% set area = (parts[0] | trim) if (parts | length > 0 and (parts[0] | trim) != '') else 'unassigned' %}
+            {% endif %}
+
+            {% set metric = 'unknown' %}
+            {% if token in ['temperature', 'temp'] %}
+              {% set metric = 'temperature' %}
+            {% elif token in ['humidity', 'hum'] %}
+              {% set metric = 'humidity' %}
+            {% elif token in ['illuminance', 'lux'] %}
+              {% set metric = 'illuminance' %}
+            {% elif token in ['power_watt', 'power', 'watt', 'w'] %}
+              {% set metric = 'power_watt' %}
+            {% elif token in ['current', 'amp', 'a'] %}
+              {% set metric = 'current' %}
+            {% elif token in ['voltage', 'volt', 'v'] %}
+              {% set metric = 'voltage' %}
+            {% elif token in ['power_factor', 'pf'] %}
+              {% set metric = 'power_factor' %}
+            {% elif token in ['switch', 'power'] %}
+              {% set metric = 'switch' %}
+            {% elif token in ['motion', 'moving'] %}
+              {% set metric = 'motion' %}
+            {% elif token in ['presence', 'occupancy'] %}
+              {% set metric = 'presence' %}
+            {% elif token in ['mode', 'climate'] %}
+              {% set metric = 'mode' %}
+            {% elif domain == 'climate' %}
+              {% set metric = 'mode' %}
+            {% elif domain in ['light', 'switch'] %}
+              {% set metric = 'switch' %}
+            {% elif domain == 'binary_sensor' and dc in ['occupancy', 'presence'] %}
+              {% set metric = 'presence' %}
+            {% elif domain == 'binary_sensor' and dc in ['motion', 'moving'] %}
+              {% set metric = 'motion' %}
+            {% elif dc == 'temperature' %}
+              {% set metric = 'temperature' %}
+            {% elif dc == 'humidity' %}
+              {% set metric = 'humidity' %}
+            {% elif dc == 'illuminance' %}
+              {% set metric = 'illuminance' %}
+            {% elif dc == 'power' %}
+              {% set metric = 'power_watt' %}
+            {% elif dc == 'current' %}
+              {% set metric = 'current' %}
+            {% elif dc == 'voltage' %}
+              {% set metric = 'voltage' %}
+            {% elif dc == 'power_factor' %}
+              {% set metric = 'power_factor' %}
+            {% endif %}
+
+            {% set category = 'UNKNOWN' %}
+            {% if domain == 'climate' or metric == 'mode' %}
+              {% set category = 'IRC' %}
+            {% elif domain == 'light' %}
+              {% set category = 'LIGHT_SWITCH' %}
+            {% elif metric in ['temperature', 'humidity'] %}
+              {% set category = 'IAQ' %}
+            {% elif metric == 'illuminance' %}
+              {% set category = 'ILLUMINANCE' %}
+            {% elif metric in ['power_watt', 'current', 'voltage', 'power_factor'] %}
+              {% set category = 'CT_METER' %}
+            {% elif metric == 'motion' %}
+              {% set category = 'MOTION' %}
+            {% elif metric == 'presence' %}
+              {% set category = 'OCCUPANCY' %}
+            {% elif domain == 'switch' and metric == 'switch' %}
+              {% set category = 'SWITCH' %}
+            {% endif %}
+
+            {% if category != 'UNKNOWN' %}
+              {% set key = area ~ '||' ~ category %}
+              {% set cur = ns.groups.get(key, {
+                'area': area,
+                'category': category,
+                'items': []
+              }) %}
+              {% set item = {
+                'entity': e,
+                'domain': domain,
+                'metric': metric
+              } %}
+              {% set cur = cur | combine({'items': cur.items + [item]}) %}
+              {% set ns.groups = ns.groups | combine({key: cur}) %}
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.groups | tojson }}
+
+  - service: system_log.write
+    data:
+      level: warning
+      message: >
+        [MQTT_Bridge] grouped entities count={{ (_groups_json | from_json) | count }}
+
+  - repeat:
+      for_each: "{{ (_groups_json | from_json) | dictsort }}"
+      sequence:
+        - variables:
+            _group: "{{ repeat.item[1] }}"
+            _category: "{{ _group.category }}"
+            _area: "{{ _group.area }}"
+            _area_topic: "{{ _area | lower | replace(' ', '_') }}"
+            _items: "{{ _group.items }}"
+            _category_effective: >
+              {% set heartbeat_categories = ['CT_METER', 'IAQ', 'ILLUMINANCE'] %}
+              {% set state_categories = ['LIGHT_SWITCH', 'SWITCH', 'MOTION', 'OCCUPANCY', 'IRC'] %}
+              {% set entities_in_group = _group.items | map(attribute='entity') | list %}
+              {% if trigger.id == 'heartbeat' and _category in heartbeat_categories %}
+                {{ _category }}
+              {% elif trigger.id == 'state_changed' and _category in state_categories and trigger.entity_id in entities_in_group %}
+                {{ _category }}
+              {% else %}
+                SKIP
+              {% endif %}
+
+        - choose:
+            - conditions:
+                - condition: template
+                  value_template: "{{ _category_effective == 'CT_METER' }}"
+              sequence:
+                - service: mqtt.publish
+                  data:
+                    qos: "{{ _qos }}"
+                    retain: "{{ _retain }}"
+                    topic: "{{ _base_topic }}/telemetry/{{ _area_topic }}/{{ _category | lower }}"
+                    payload: >
+                      {% set ns = namespace(pw=none, cur=none, vol=none, pf=none) %}
+                      {% for i in _items %}
+                        {% if i.metric == 'power_watt' and ns.pw is none %}{% set ns.pw = i.entity %}{% endif %}
+                        {% if i.metric == 'current' and ns.cur is none %}{% set ns.cur = i.entity %}{% endif %}
+                        {% if i.metric == 'voltage' and ns.vol is none %}{% set ns.vol = i.entity %}{% endif %}
+                        {% if i.metric == 'power_factor' and ns.pf is none %}{% set ns.pf = i.entity %}{% endif %}
+                      {% endfor %}
+
+                      {% set s_pw = states(ns.pw) if ns.pw is not none else none %}
+                      {% set s_cur = states(ns.cur) if ns.cur is not none else none %}
+                      {% set s_vol = states(ns.vol) if ns.vol is not none else none %}
+                      {% set s_pf = states(ns.pf) if ns.pf is not none else none %}
+
+                      {{ {
+                        'timestamp': utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ'),
+                        'area': _area,
+                        'trigger_reason': trigger.id,
+                        'telemetry': {
+                          'power_watt': (none if s_pw in ['none', 'unavailable', 'unknown', None] else (s_pw | float)),
+                          'current': (none if s_cur in ['none', 'unavailable', 'unknown', None] else (s_cur | float)),
+                          'voltage': (none if s_vol in ['none', 'unavailable', 'unknown', None] else (s_vol | float)),
+                          'power_factor': (none if s_pf in ['none', 'unavailable', 'unknown', None] else (s_pf | float))
+                        }
+                      } | tojson }}
+
+            - conditions:
+                - condition: template
+                  value_template: "{{ _category_effective == 'IAQ' }}"
+              sequence:
+                - service: mqtt.publish
+                  data:
+                    qos: "{{ _qos }}"
+                    retain: "{{ _retain }}"
+                    topic: "{{ _base_topic }}/telemetry/{{ _area_topic }}/{{ _category | lower }}"
+                    payload: >
+                      {% set ns = namespace(temp=none, hum=none) %}
+                      {% for i in _items %}
+                        {% if i.metric == 'temperature' and ns.temp is none %}{% set ns.temp = i.entity %}{% endif %}
+                        {% if i.metric == 'humidity' and ns.hum is none %}{% set ns.hum = i.entity %}{% endif %}
+                      {% endfor %}
+
+                      {% set s_temp = states(ns.temp) if ns.temp is not none else none %}
+                      {% set s_hum = states(ns.hum) if ns.hum is not none else none %}
+
+                      {{ {
+                        'timestamp': utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ'),
+                        'area': _area,
+                        'trigger_reason': trigger.id,
+                        'telemetry': {
+                          'temperature': (none if s_temp in ['none', 'unavailable', 'unknown', None] else (s_temp | float)),
+                          'humidity': (none if s_hum in ['none', 'unavailable', 'unknown', None] else (s_hum | float))
+                        }
+                      } | tojson }}
+
+            - conditions:
+                - condition: template
+                  value_template: "{{ _category_effective == 'ILLUMINANCE' }}"
+              sequence:
+                - service: mqtt.publish
+                  data:
+                    qos: "{{ _qos }}"
+                    retain: "{{ _retain }}"
+                    topic: "{{ _base_topic }}/telemetry/{{ _area_topic }}/{{ _category | lower }}"
+                    payload: >
+                      {% set ns = namespace(lux=none) %}
+                      {% for i in _items %}
+                        {% if i.metric == 'illuminance' and ns.lux is none %}{% set ns.lux = i.entity %}{% endif %}
+                      {% endfor %}
+                      {% set s = states(ns.lux) if ns.lux is not none else none %}
+
+                      {{ {
+                        'timestamp': utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ'),
+                        'area': _area,
+                        'trigger_reason': trigger.id,
+                        'telemetry': {
+                          'illuminance': (none if s in ['none', 'unavailable', 'unknown', None] else (s | float))
+                        }
+                      } | tojson }}
+
+            - conditions:
+                - condition: template
+                  value_template: "{{ _category_effective == 'MOTION' }}"
+              sequence:
+                - service: mqtt.publish
+                  data:
+                    qos: "{{ _qos }}"
+                    retain: "{{ _retain }}"
+                    topic: "{{ _base_topic }}/telemetry/{{ _area_topic }}/{{ _category | lower }}"
+                    payload: >
+                      {% set ns = namespace(m=none) %}
+                      {% for i in _items %}
+                        {% if i.metric == 'motion' and ns.m is none %}{% set ns.m = i.entity %}{% endif %}
+                      {% endfor %}
+                      {% set s = states(ns.m) if ns.m is not none else none %}
+
+                      {{ {
+                        'timestamp': utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ'),
+                        'area': _area,
+                        'trigger_reason': trigger.id,
+                        'telemetry': {
+                          'motion': (none if s in ['none', 'unavailable', 'unknown', None] else s)
+                        }
+                      } | tojson }}
+
+            - conditions:
+                - condition: template
+                  value_template: "{{ _category_effective == 'OCCUPANCY' }}"
+              sequence:
+                - service: mqtt.publish
+                  data:
+                    qos: "{{ _qos }}"
+                    retain: "{{ _retain }}"
+                    topic: "{{ _base_topic }}/telemetry/{{ _area_topic }}/{{ _category | lower }}"
+                    payload: >
+                      {% set ns = namespace(p=none) %}
+                      {% for i in _items %}
+                        {% if i.metric == 'presence' and ns.p is none %}{% set ns.p = i.entity %}{% endif %}
+                      {% endfor %}
+                      {% set s = states(ns.p) if ns.p is not none else none %}
+
+                      {{ {
+                        'timestamp': utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ'),
+                        'area': _area,
+                        'trigger_reason': trigger.id,
+                        'telemetry': {
+                          'presence': (none if s in ['none', 'unavailable', 'unknown', None] else s)
+                        }
+                      } | tojson }}
+
+            - conditions:
+                - condition: template
+                  value_template: "{{ _category_effective == 'SWITCH' }}"
+              sequence:
+                - service: mqtt.publish
+                  data:
+                    qos: "{{ _qos }}"
+                    retain: "{{ _retain }}"
+                    topic: "{{ _base_topic }}/telemetry/{{ _area_topic }}/{{ _category | lower }}"
+                    payload: >
+                      {% set ns = namespace(sw=none) %}
+                      {% for i in _items %}
+                        {% if i.metric == 'switch' and i.domain == 'switch' and ns.sw is none %}{% set ns.sw = i.entity %}{% endif %}
+                      {% endfor %}
+                      {% set s = states(ns.sw) if ns.sw is not none else none %}
+
+                      {{ {
+                        'timestamp': utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ'),
+                        'area': _area,
+                        'trigger_reason': trigger.id,
+                        'telemetry': {
+                          'switch': (none if s in ['none', 'unavailable', 'unknown', None] else s)
+                        }
+                      } | tojson }}
+
+            - conditions:
+                - condition: template
+                  value_template: "{{ _category_effective == 'LIGHT_SWITCH' }}"
+              sequence:
+                - service: mqtt.publish
+                  data:
+                    qos: "{{ _qos }}"
+                    retain: "{{ _retain }}"
+                    topic: "{{ _base_topic }}/telemetry/{{ _area_topic }}/{{ _category | lower }}"
+                    payload: >
+                      {% set lights = _items[:6] %}
+                      {% set telemetry = {} %}
+                      {% for item in lights %}
+                        {% set e = item.entity %}
+                        {% set key = 'switch_' ~ loop.index %}
+                        {% set s = states(e) %}
+                        {% set v = none if s in ['none', 'unavailable', 'unknown', None] else s %}
+                        {% set telemetry = telemetry | combine({key: v}) %}
+                      {% endfor %}
+
+                      {{ {
+                        'timestamp': utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ'),
+                        'area': _area,
+                        'trigger_reason': trigger.id,
+                        'telemetry': telemetry
+                      } | tojson }}
+
+            - conditions:
+                - condition: template
+                  value_template: "{{ _category_effective == 'IRC' }}"
+              sequence:
+                - service: mqtt.publish
+                  data:
+                    qos: "{{ _qos }}"
+                    retain: "{{ _retain }}"
+                    topic: "{{ _base_topic }}/telemetry/{{ _area_topic }}/{{ _category | lower }}"
+                    payload: >
+                      {% set ns = namespace(c=none) %}
+                      {% for i in _items %}
+                        {% if i.domain == 'climate' and ns.c is none %}{% set ns.c = i.entity %}{% endif %}
+                      {% endfor %}
+
+                      {% set st = states(ns.c) if ns.c is not none else none %}
+                      {% if st in ['unavailable', 'unknown', 'none', None] %}
+                        {% set mode = none %}
+                      {% elif st in ['on', 'off'] %}
+                        {% set mode = 'off' if st == 'off' else 'cool' %}
+                      {% else %}
+                        {% set mode = st %}
+                      {% endif %}
+
+                      {% set t = state_attr(ns.c, 'temperature') if ns.c is not none else none %}
+                      {% set temp = none if t is none else (t | float) %}
+
+                      {{ {
+                        'timestamp': utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ'),
+                        'area': _area,
+                        'trigger_reason': trigger.id,
+                        'telemetry': {
+                          'mode': mode,
+                          'temperature': temp
+                        }
+                      } | tojson }}

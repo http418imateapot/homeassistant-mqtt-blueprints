@@ -1,0 +1,91 @@
+name: Blueprint CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'mqtt_*.yaml'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'VERSION'
+      - '.github/release.yml'
+      - '.github/workflows/blueprint-ci.yml'
+      - '.yamllint'
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'mqtt_*.yaml'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'VERSION'
+      - '.github/release.yml'
+      - '.github/workflows/blueprint-ci.yml'
+      - '.yamllint'
+
+jobs:
+  validate-blueprints:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml yamllint
+
+      - name: Lint YAML
+        run: |
+          yamllint -d "{extends: default, rules: {line-length: disable}}" mqtt_telemetry_uploader.yaml mqtt_command_receiver.yaml .github/release.yml
+
+      - name: Validate blueprint structure
+        run: |
+          python - <<'PY'
+          import pathlib
+          import yaml
+
+          files = [
+              pathlib.Path('mqtt_telemetry_uploader.yaml'),
+              pathlib.Path('mqtt_command_receiver.yaml'),
+          ]
+
+          required_blueprint_keys = {'name', 'description', 'domain', 'source_url', 'input'}
+
+          for path in files:
+              data = yaml.safe_load(path.read_text(encoding='utf-8'))
+              if not isinstance(data, dict):
+                  raise SystemExit(f"{path}: top-level YAML must be a mapping")
+
+              bp = data.get('blueprint')
+              if not isinstance(bp, dict):
+                  raise SystemExit(f"{path}: missing blueprint mapping")
+
+              missing = required_blueprint_keys - set(bp.keys())
+              if missing:
+                  raise SystemExit(f"{path}: missing blueprint keys: {sorted(missing)}")
+
+              if bp.get('domain') != 'automation':
+                  raise SystemExit(f"{path}: blueprint.domain must be automation")
+
+              source_url = bp.get('source_url', '')
+              if 'raw.githubusercontent.com' not in source_url:
+                  raise SystemExit(f"{path}: source_url should be a raw GitHub URL")
+
+              if 'trigger' not in data:
+                  raise SystemExit(f"{path}: missing trigger section")
+
+              if 'action' not in data:
+                  raise SystemExit(f"{path}: missing action section")
+
+          print('Blueprint validation passed.')
+          PY

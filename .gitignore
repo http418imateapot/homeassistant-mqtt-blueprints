@@ -1,0 +1,65 @@
+# ==========================================
+# Home Assistant Safety Net
+# ==========================================
+secrets.yaml
+.secrets.yaml
+home-assistant.log
+home-assistant.log.*
+*.db
+*.db-shm
+*.db-wal
+.storage/
+.cloud/
+OZW_Log.txt
+network_*.xml
+tts/
+backups/
+www/community/
+
+# Credentials and certificates
+*.pem
+*.key
+*.crt
+*.p12
+
+# Home Assistant internals and local runtime
+.HA_VERSION
+blueprints/.storage/
+deps/
+
+# Temporary and backup files
+*.bak
+*.tmp
+*.orig
+
+# ==========================================
+# OS Generated Files
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ==========================================
+# Editors & IDEs
+# ==========================================
+# VS Code
+.vscode/
+
+# JetBrains (IntelliJ, PyCharm, etc)
+.idea/
+
+# Vim
+*.swp
+*.swo
+*~
+
+# ==========================================
+# Others
+# ==========================================
+__pycache__/
+*.pyc
+.env
