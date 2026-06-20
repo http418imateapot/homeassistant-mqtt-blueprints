@@ -2,7 +2,7 @@
 
 [![Blueprint CI](https://github.com/http418imateapot/homeassistant-mqtt-blueprints/actions/workflows/blueprint-ci.yml/badge.svg)](https://github.com/http418imateapot/homeassistant-mqtt-blueprints/actions/workflows/blueprint-ci.yml)
 [![Release Pipeline](https://github.com/http418imateapot/homeassistant-mqtt-blueprints/actions/workflows/release.yml/badge.svg)](https://github.com/http418imateapot/homeassistant-mqtt-blueprints/actions/workflows/release.yml)
-[![Latest Release](https://img.shields.io/github/v/release/http418imateapot/homeassistant-mqtt-blueprints?display_name=tag&label=Release)](https://github.com/http418imateapot/homeassistant-mqtt-blueprints/releases)
+[![Latest Release](https://img.shields.io/github/v/release/http418imateapot/homeassistant-mqtt-blueprints?label=Release)]([https://github.com/http418imateapot/homeassistant-mqtt-blueprints/releases](https://img.shields.io/github/v/release/http418imateapot/homeassistant-mqtt-blueprints?label=Release))
 
 A plug-and-play blueprint set for bridging Home Assistant entities with a local MQTT broker.
 
