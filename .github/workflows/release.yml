@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   publish-release:
-    # For workflow_dispatch, run this workflow from a tag ref.
+    # Run on semantic version tag push (v1.0.0)
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
