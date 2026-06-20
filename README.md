@@ -1,5 +1,9 @@
 # Universal Local-First MQTT Blueprints for Home Assistant
 
+[![Blueprint CI](https://github.com/http418imateapot/homeassistant-mqtt-blueprints/actions/workflows/blueprint-ci.yml/badge.svg)](https://github.com/http418imateapot/homeassistant-mqtt-blueprints/actions/workflows/blueprint-ci.yml)
+[![Release Pipeline](https://github.com/http418imateapot/homeassistant-mqtt-blueprints/actions/workflows/release.yml/badge.svg)](https://github.com/http418imateapot/homeassistant-mqtt-blueprints/actions/workflows/release.yml)
+[![Latest Release](https://img.shields.io/github/v/release/http418imateapot/homeassistant-mqtt-blueprints?display_name=tag&label=Release)](https://github.com/http418imateapot/homeassistant-mqtt-blueprints/releases)
+
 A plug-and-play blueprint set for bridging Home Assistant entities with a local MQTT broker.
 
 - Local-first design: no cloud lock-in and no virtual helper sensors required.
@@ -224,11 +228,34 @@ CI is enabled via:
 
 - `.github/workflows/blueprint-ci.yml`
 
+Validation logic is shared via:
+
+- `tools/check_blueprints.py`
+
 The CI workflow validates:
 
 1. YAML lint for blueprint and release config files.
 2. Required blueprint keys (`name`, `description`, `domain`, `source_url`, `input`).
 3. Basic structure checks (`trigger`, `action`, `domain: automation`, and raw GitHub `source_url`).
+4. `blueprint.input` is a mapping and each input defines both `selector` and `default`.
+5. Home Assistant custom YAML tags (for example `!input`) are accepted by the checker.
+
+### Local Validation (same as CI)
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Run lint + structure validation:
+
+```bash
+yamllint -c .yamllint mqtt_telemetry_uploader.yaml mqtt_command_receiver.yaml .github/release.yml .github/workflows/blueprint-ci.yml
+python ./tools/check_blueprints.py
+```
+
+`tools/check_blueprints.py` uses a Home Assistant-friendly YAML loader, so files containing tags like `!input mqtt_base_topic` are parsed correctly instead of failing with `yaml.constructor.ConstructorError`.
 
 ## Versioning
 
