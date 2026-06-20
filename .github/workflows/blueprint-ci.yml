@@ -46,7 +46,7 @@ jobs:
 
       - name: Lint YAML
         run: |
-          yamllint -d "{extends: default, rules: {line-length: disable}}" mqtt_telemetry_uploader.yaml mqtt_command_receiver.yaml .github/release.yml
+          yamllint -c .yamllint mqtt_telemetry_uploader.yaml mqtt_command_receiver.yaml .github/release.yml .github/workflows/blueprint-ci.yml
 
       - name: Validate blueprint structure
         run: |
