@@ -44,10 +44,9 @@ This is the current design baseline for open-source release:
 
 ### Telemetry Publish Topic
 
-`{mqtt_base_topic}/telemetry/{area}/{domain}`
+`{mqtt_base_topic}/telemetry/{domain}`
 
 - mqtt_base_topic: Blueprint input, default `homeassistant`
-- area: Derived from entity Area, fallback to friendly-name-based location parsing
 - domain: Home Assistant entity domain, such as `sensor`, `switch`, `light`, `climate`, or `binary_sensor`
 
 ### Command Subscribe Topic
@@ -75,6 +74,8 @@ Record fields per telemetry item are strict and fixed:
 - `friendly_name`
 - `domain`
 - `unit`
+
+`area` is represented in payload metadata and can be `null` when an entity has no assigned Home Assistant area.
 
 #### Sensor Example
 
@@ -199,7 +200,7 @@ Heartbeat messages use the same payload shape, but set `sample_type` to `heartbe
   - `Allowed Domains`: supports `all`, `climate`, `switch`, `light`.
   - `Verbose Debug Logs`: optional detailed debug fields for troubleshooting.
 5. Publish a JSON command payload to `homeassistant/commands`.
-6. Verify telemetry messages under `homeassistant/telemetry/{area}/{domain}`.
+6. Verify telemetry messages under `homeassistant/telemetry/{domain}`.
 7. Use `sample_type` on the subscriber side to distinguish event-driven updates from heartbeat snapshots.
 
 ## Test Payloads and mosquitto_pub Examples
@@ -304,6 +305,8 @@ Expected heartbeat payload example:
 }
 ```
 
+If an entity has no assigned Home Assistant area, payload `area` can be `null`.
+
 Subscriber handling guidance:
 
 1. Treat `sample_type=event` as event-driven updates.
@@ -320,7 +323,7 @@ After enabling the uploader automation:
 
 If everything is configured correctly, messages should appear under:
 
-`homeassistant/telemetry/{area}/{domain}`
+`homeassistant/telemetry/{domain}`
 
 ## Security Notes
 
