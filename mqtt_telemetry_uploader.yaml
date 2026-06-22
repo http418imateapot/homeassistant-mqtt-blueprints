@@ -2,7 +2,7 @@ blueprint:
   name: Universal Local-First MQTT Telemetry Uploader
   description: >
     Monitor selected Home Assistant entities and publish grouped telemetry to MQTT.
-    Topic format: {mqtt_base_topic}/telemetry/{location}/{domain}
+    Topic format: {mqtt_base_topic}/telemetry/{domain}
     Payload fields: timestamp, area, trigger_reason, sample_type, telemetries
   domain: automation
   source_url: https://raw.githubusercontent.com/http418imateapot/homeassistant-mqtt-blueprints/main/mqtt_telemetry_uploader.yaml
@@ -123,42 +123,44 @@ condition: []
 action:
   - variables:
       _groups_json: >
-        {% set ns = namespace(groups = {}) %}
+        {% set ns = namespace(groups = []) %}
         {% for e in _all_entities %}
           {% if e %}
             {% set domain = (e.split('.')[0]) if ('.' in e) else '' %}
-            {% set key = area ~ '||' ~ domain %}
+            {% set entity_area = area_name(e) %}
+            {% set key = (entity_area | string) ~ '||' ~ domain %}
             {% if domain != '' %}
-              {% set cur = ns.groups.get(key, {
-                'area': area,
-                'domain': domain,
-                'items': []
-              }) %}
               {% set item = {'entity': e, 'domain': domain} %}
-              {% set cur = cur | combine({'items': cur.items + [item]}) %}
-              {% set ns.groups = ns.groups | combine({key: cur}) %}
+              {% set matches = ns.groups | selectattr('key', 'equalto', key) | list %}
+              {% set current = matches[0] if matches | count > 0 else none %}
+              {% set cur = {
+                'key': key,
+                'area': entity_area,
+                'domain': domain,
+                'items': (current['items'] if current is not none else []) + [item]
+              } %}
+              {% set ns.groups = (ns.groups | rejectattr('key', 'equalto', key) | list) + [cur] %}
             {% endif %}
           {% endif %}
         {% endfor %}
-        {{ ns.groups | tojson }}
+        {{ ns.groups }}
 
   - service: system_log.write
     data:
       level: warning
       message: >
-        [MQTT_Bridge] grouped entities count={{ (_groups_json | from_json) | count }}
+        [MQTT_Bridge] grouped entities count={{ _groups_json | count }}
 
   - repeat:
-      for_each: "{{ (_groups_json | from_json) | dictsort }}"
+      for_each: "{{ _groups_json }}"
       sequence:
         - variables:
-            _group: "{{ repeat.item[1] }}"
+            _group: "{{ repeat.item }}"
             _domain: "{{ _group.domain }}"
             _area: "{{ _group.area }}"
-            _area_topic: "{{ _area | lower | replace(' ', '_') }}"
-            _items: "{{ _group.items }}"
+            _items: "{{ _group['items'] }}"
             _publish_group: >
-              {% set entities_in_group = _group.items | map(attribute='entity') | list %}
+              {% set entities_in_group = _group['items'] | map(attribute='entity') | list %}
               {{ trigger.id == 'heartbeat' or (trigger.id == 'state_changed' and trigger.entity_id in entities_in_group) }}
             _telemetries_json: >
               {% set ns = namespace(items = []) %}
@@ -182,6 +184,7 @@ action:
                 {% elif i.domain == 'climate' %}
                   {% set hvac_mode = state if state not in ['none', 'unavailable', 'unknown', None] else none %}
                   {% set temp = state_attr(i.entity, 'temperature') %}
+                  {% set temp_unit = state_attr(i.entity, 'temperature_unit') %}
                   {% if hvac_mode is not none %}
                     {% set ns.items = ns.items + [{
                       'name': 'hvac_mode',
@@ -199,7 +202,7 @@ action:
                       'entity': i.entity,
                       'friendly_name': friendly_name,
                       'domain': i.domain,
-                      'unit': state_attr(i.entity, 'temperature_unit') | default(none, true)
+                      'unit': (temp_unit | string if temp_unit is not none else none)
                     }] %}
                   {% endif %}
                 {% endif %}
@@ -215,7 +218,7 @@ action:
                   data:
                     qos: "{{ _qos }}"
                     retain: "{{ _retain }}"
-                    topic: "{{ _base_topic }}/telemetry/{{ _area_topic }}/{{ _domain }}"
+                    topic: "{{ _base_topic }}/telemetry/{{ _domain }}"
                     payload: >
                       {{ {
                         'timestamp': utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ'),
