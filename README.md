@@ -305,6 +305,8 @@ Expected heartbeat payload example:
 }
 ```
 
+If an entity has no assigned Home Assistant area, payload `area` can be `null`.
+
 Subscriber handling guidance:
 
 1. Treat `sample_type=event` as event-driven updates.
