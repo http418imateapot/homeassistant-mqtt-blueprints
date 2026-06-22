@@ -30,7 +30,7 @@ flowchart LR
 
 This is the current design baseline for open-source release:
 
-- Telemetry uploader groups selected entities by area and domain, then publishes strict per-domain JSON payloads.
+- Telemetry uploader groups selected entities by area and domain internally, then publishes strict per-domain JSON payloads.
 - Command receiver uses native MQTT trigger and dispatches commands to climate, switch, and light services.
 - Command receiver includes whitelist controls by area and domain:
   - Area filter: `All Areas` + `Allowed Areas`
@@ -44,10 +44,9 @@ This is the current design baseline for open-source release:
 
 ### Telemetry Publish Topic
 
-`{mqtt_base_topic}/telemetry/{area}/{domain}`
+`{mqtt_base_topic}/telemetry/{domain}`
 
 - mqtt_base_topic: Blueprint input, default `homeassistant`
-- area: Derived from entity Area, fallback to friendly-name-based location parsing
 - domain: Home Assistant entity domain, such as `sensor`, `switch`, `light`, `climate`, or `binary_sensor`
 
 ### Command Subscribe Topic
@@ -75,6 +74,8 @@ Record fields per telemetry item are strict and fixed:
 - `friendly_name`
 - `domain`
 - `unit`
+
+`area` is represented in payload metadata and can be `null` when an entity has no assigned Home Assistant area.
 
 #### Sensor Example
 
@@ -199,7 +200,7 @@ Heartbeat messages use the same payload shape, but set `sample_type` to `heartbe
   - `Allowed Domains`: supports `all`, `climate`, `switch`, `light`.
   - `Verbose Debug Logs`: optional detailed debug fields for troubleshooting.
 5. Publish a JSON command payload to `homeassistant/commands`.
-6. Verify telemetry messages under `homeassistant/telemetry/{area}/{domain}`.
+6. Verify telemetry messages under `homeassistant/telemetry/{domain}`.
 7. Use `sample_type` on the subscriber side to distinguish event-driven updates from heartbeat snapshots.
 
 ## Test Payloads and mosquitto_pub Examples
@@ -320,7 +321,7 @@ After enabling the uploader automation:
 
 If everything is configured correctly, messages should appear under:
 
-`homeassistant/telemetry/{area}/{domain}`
+`homeassistant/telemetry/{domain}`
 
 ## Security Notes
 
@@ -375,7 +376,7 @@ python ./tools/check_blueprints.py
 
 This repository includes simple GitHub-friendly version files:
 
-- `VERSION`: current project version (for example `1.0.0`).
+- `VERSION`: current project version (for example `2.1.0`).
 - `CHANGELOG.md`: human-readable release history.
 - `.github/release.yml`: release note category rules for GitHub Releases.
 
@@ -383,7 +384,7 @@ Recommended release flow:
 
 1. Update `VERSION`.
 2. Add a new section to `CHANGELOG.md`.
-3. Commit changes and create a tag (for example `v1.0.1`).
+3. Commit changes and create a tag (for example `v2.1.1`).
 4. Publish a GitHub Release from the tag.
 
 ## License

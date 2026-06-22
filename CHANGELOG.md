@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog,
 and this project follows Semantic Versioning.
 
+## [2.1.0] - 2026-06-22
+### Changed
+- Telemetry publish topic was simplified to `{mqtt_base_topic}/telemetry/{domain}`.
+- `area` remains in telemetry payload metadata and may be `null` when an entity has no assigned Home Assistant area.
+- Updated README examples and setup guidance to match current telemetry topic and payload behavior.
+
+### Fixed
+- Fixed template key access to avoid dict-method collisions on `items`.
+- Removed dependency on unsupported `combine`-based template merge path.
+- Fixed grouping and repeat variable flow to avoid runtime rendering failures.
+- Ensured `telemetries` is emitted as JSON array/object, not quoted JSON string.
+- Normalized climate `temperature_unit` to plain string for clean JSON serialization.
+- Fixed YAML indentation in repeat variables block to avoid parse errors.
+
 ## [2.0.0] - 2026-06-20
 ### Changed
 - **Breaking:** Telemetry topic format changed from `{mqtt_base_topic}/telemetry/{location}/{category}` to `{mqtt_base_topic}/telemetry/{area}/{domain}`.
