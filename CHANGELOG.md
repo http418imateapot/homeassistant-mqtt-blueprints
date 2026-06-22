@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog,
 and this project follows Semantic Versioning.
 
+## [Unreleased]
+### Changed
+- Updated README telemetry topic documentation to `{mqtt_base_topic}/telemetry/{domain}`.
+- Clarified in README that telemetry payload `area` can be `null` when an entity has no assigned Home Assistant area.
+
 ## [2.0.0] - 2026-06-20
 ### Changed
 - **Breaking:** Telemetry topic format changed from `{mqtt_base_topic}/telemetry/{location}/{category}` to `{mqtt_base_topic}/telemetry/{area}/{domain}`.
