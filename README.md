@@ -31,10 +31,14 @@ flowchart LR
 This is the current design baseline for open-source release:
 
 - Telemetry uploader groups selected entities by area and domain internally, then publishes strict per-domain JSON payloads.
-- Command receiver uses native MQTT trigger and dispatches commands to climate, switch, and light services.
+- Telemetry uploader publishes retained MQTT Discovery configs per selected entity and retained capability metadata.
+- Command receiver is schema v2 first and dispatches Home Assistant-native service calls using `service`, `target`, and `data`.
 - Command receiver includes whitelist controls by area and domain:
   - Area filter: `All Areas` + `Allowed Areas`
   - Domain filter: `Allowed Domains` (`all`, `climate`, `switch`, `light`)
+- Command schema compatibility controls:
+  - `Command Schema Mode`: `v1_v2_compat` or `v2_only`
+  - `Schema v1 Deprecation Timeline`: log display only for migration messaging
 - Logs are safe-by-default:
   - Debug logs do not print full payload by default.
   - Optional verbose debug mode can show command field names.
@@ -49,15 +53,57 @@ This is the current design baseline for open-source release:
 - mqtt_base_topic: Blueprint input, default `homeassistant`
 - domain: Home Assistant entity domain, such as `sensor`, `switch`, `light`, `climate`, or `binary_sensor`
 
+### Telemetry Availability Topic (Retained)
+
+`{mqtt_base_topic}/telemetry/availability`
+
+- Published as retained `online` by uploader automation.
+- Used by Discovery config as `availability_topic`.
+
 ### Command Subscribe Topic
 
 `{mqtt_command_topic}`
 
 - mqtt_command_topic: Blueprint input, default `homeassistant/commands`
+- For consistency, set this to `{mqtt_base_topic}/commands` when using capability metadata `write_contract.command_topic`.
+
+### Discovery Config Topics (Retained)
+
+`{mqtt_discovery_prefix}/{component}/mqtt_bridge/{domain}_{object_id}/config`
+
+- mqtt_discovery_prefix: Blueprint input, default `homeassistant`
+- component: `sensor` or `binary_sensor`
+
+### Capability Metadata Topics (Retained)
+
+`{mqtt_base_topic}/telemetry/capabilities/{entity_id_with_slash}`
+
+- Example: `homeassistant/telemetry/capabilities/light/desk_lamp`
 
 ## Payload Schemas
 
 ### Telemetry Payload (Publisher)
+
+Top-level fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `timestamp` | string (UTC ISO8601) | Publish timestamp. |
+| `area` | string or null | Home Assistant area name of this grouped payload. |
+| `trigger_reason` | string | Trigger source, usually `state_changed` or `heartbeat`. |
+| `sample_type` | string | `event` for state-triggered publish, `heartbeat` for timer publish. |
+| `telemetries` | array | Entity telemetry records. |
+
+Telemetry record fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Metric name (`state`, `hvac_mode`, `temperature`). |
+| `value` | string, number, or null | Metric value. |
+| `entity` | string | Entity id, for example `light.desk_lamp`. |
+| `friendly_name` | string | Display label only. Not identity or authorization key. |
+| `domain` | string | Entity domain. |
+| `unit` | string or null | Unit when available (mostly sensors and climate temperature). |
 
 `sample_type` indicates whether a message is a real state event or a periodic heartbeat snapshot.
 
@@ -152,7 +198,186 @@ Heartbeat messages use the same payload shape, but set `sample_type` to `heartbe
 }
 ```
 
-### Command Payload (Subscriber)
+### Command Payload v2 (Subscriber, Preferred)
+
+```json
+{
+  "schema": "v2",
+  "service": "light.turn_on",
+  "target": {
+    "entity_id": ["light.desk_light"]
+  },
+  "data": {
+    "brightness_pct": 60
+  }
+}
+```
+
+Field contract:
+
+| Field | Required | Type | Rules |
+|---|---|---|---|
+| `schema` | Yes | string | Must be `v2`. |
+| `service` | Yes | string | Must be `domain.service`, for example `climate.set_temperature`. |
+| `target` | Yes | object | Home Assistant service target object. |
+| `data` | Yes | object | Home Assistant service data object. Can be empty `{}`. |
+
+Contract notes:
+
+- `service` must be `domain.service`.
+- `target` and `data` must be JSON objects.
+- Domain allowlist is validated against `service` domain.
+- `target.entity_id` domains must match the `service` domain.
+- Target scope must pass area whitelist checks (`All Areas` and `Allowed Areas`).
+- `friendly_name` is display metadata only and never used for identity or authorization.
+
+Accepted target forms:
+
+- `target.entity_id`: string or array of strings
+- `target.area_id`: string or array of strings
+
+If `target.entity_id` is provided, area checks are evaluated against each entity's actual area.
+If only `target.area_id` is provided, all listed area ids must be within the allowed area scope.
+
+### Receiver Execution Flow
+
+1. Receiver subscribes to `mqtt_command_topic`.
+2. Parses JSON and reads `schema`.
+3. For `schema=v2`, validates service format, allowed domain, target domain consistency, and allowed area scope.
+4. On pass, executes Home Assistant service directly using:
+   - `service: <service>`
+   - `target: <target>`
+   - `data: <data>`
+5. On failure, writes warning log and does not dispatch.
+
+### How To Send Commands To HA Entities
+
+Light turn on:
+
+```json
+{
+  "schema": "v2",
+  "service": "light.turn_on",
+  "target": {
+    "entity_id": ["light.desk_light"]
+  },
+  "data": {
+    "brightness_pct": 70
+  }
+}
+```
+
+Switch turn off:
+
+```json
+{
+  "schema": "v2",
+  "service": "switch.turn_off",
+  "target": {
+    "entity_id": ["switch.kitchen_fan"]
+  },
+  "data": {}
+}
+```
+
+Climate set HVAC mode:
+
+```json
+{
+  "schema": "v2",
+  "service": "climate.set_hvac_mode",
+  "target": {
+    "entity_id": ["climate.bedroom_ac"]
+  },
+  "data": {
+    "hvac_mode": "cool"
+  }
+}
+```
+
+Climate set temperature:
+
+```json
+{
+  "schema": "v2",
+  "service": "climate.set_temperature",
+  "target": {
+    "entity_id": ["climate.bedroom_ac"]
+  },
+  "data": {
+    "temperature": 24
+  }
+}
+```
+
+Publish the JSON payload to the receiver topic (default `homeassistant/commands`).
+
+### Capability Payload (Retained)
+
+Topic format:
+
+`{mqtt_base_topic}/telemetry/capabilities/{entity_id_with_slash}`
+
+Example topic:
+
+`homeassistant/telemetry/capabilities/light/desk_lamp`
+
+Payload fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `entity` | string | Home Assistant entity id. |
+| `domain` | string | Entity domain. |
+| `area` | string or null | Area name of entity. |
+| `read_contract` | object | How to read state from telemetry stream. |
+| `write_contract` | object | How to issue control commands for this entity. |
+
+`read_contract` fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `state_topic` | string | Domain telemetry topic used by this entity. |
+| `metric` | string | Metric selector used by discovery/capability (`state` or `hvac_mode`). |
+| `payload_schema.sample_type` | array | Supported sample types: `event`, `heartbeat`. |
+| `payload_schema.fields` | array | Expected top-level telemetry fields. |
+
+`write_contract` fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `schema` | string or null | `v2` for writable domains; null for read-only domains. |
+| `command_topic` | string or null | Topic to publish commands to. |
+| `envelope` | array | Required command envelope field names. |
+| `service_domain` | string or null | Expected service domain for this entity. |
+| `target_fields` | array | Supported target keys (`entity_id`, `area_id`). |
+
+Writable domains currently: `switch`, `light`, `climate`.
+
+Read-only domains currently: `sensor`, `binary_sensor`.
+
+### Discovery Payload (Retained)
+
+Uploader publishes retained MQTT Discovery config per selected entity.
+
+Current implementation maps:
+
+- `binary_sensor` entities -> Discovery component `binary_sensor`
+- `sensor`, `switch`, `light`, `climate` entities -> Discovery component `sensor`
+
+Common Discovery payload keys include:
+
+- `name`
+- `unique_id`
+- `state_topic`
+- `availability_topic`
+- `payload_available` / `payload_not_available`
+- `value_template`
+- `json_attributes_topic`
+- `device`
+- `origin`
+- `object_id`
+
+### Command Payload v1 (Deprecated Compatibility)
 
 ```json
 {
@@ -168,6 +393,8 @@ Heartbeat messages use the same payload shape, but set `sample_type` to `heartbe
   }
 }
 ```
+
+v1 is accepted only when `Command Schema Mode` is `v1_v2_compat` and logs explicit deprecation warnings.
 
 ## Installation
 
@@ -214,9 +441,32 @@ MQTT_USER="your_user"
 MQTT_PASS="your_password"
 ```
 
-### 1) Test Command Receiver (switch/light/climate)
+### 1) Test Command Receiver (schema v2)
 
-Sample command payload:
+Sample command payload (v2):
+
+```json
+{
+  "schema": "v2",
+  "service": "climate.set_temperature",
+  "target": {
+    "entity_id": ["climate.bedroom_ac"]
+  },
+  "data": {
+    "temperature": 24
+  }
+}
+```
+
+Publish the command:
+
+```bash
+mosquitto_pub -h "$BROKER_HOST" -p "$BROKER_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" \
+  -t "homeassistant/commands" \
+  -m '{"schema":"v2","service":"climate.set_temperature","target":{"entity_id":["climate.bedroom_ac"]},"data":{"temperature":24}}'
+```
+
+Legacy v1 example (deprecated):
 
 ```json
 {
@@ -231,14 +481,6 @@ Sample command payload:
     "temperature": 24
   }
 }
-```
-
-Publish the command:
-
-```bash
-mosquitto_pub -h "$BROKER_HOST" -p "$BROKER_PORT" -u "$MQTT_USER" -P "$MQTT_PASS" \
-  -t "homeassistant/commands" \
-  -m '{"switch.kitchen_fan":{"switch":"on"},"light.desk_light":{"power":"off"},"climate.bedroom_ac":{"mode":"cool","temperature":24}}'
 ```
 
 ### 2) Observe Telemetry Topics
@@ -259,6 +501,8 @@ $MqttUser = "your_user"
 $MqttPass = "your_password"
 
 mosquitto_pub -h $BrokerHost -p $BrokerPort -u $MqttUser -P $MqttPass -t "homeassistant/commands" -m '{"switch.kitchen_fan":{"switch":"on"},"light.desk_light":{"power":"off"},"climate.bedroom_ac":{"mode":"cool","temperature":24}}'
+
+mosquitto_pub -h $BrokerHost -p $BrokerPort -u $MqttUser -P $MqttPass -t "homeassistant/commands" -m '{"schema":"v2","service":"light.turn_on","target":{"entity_id":["light.desk_light"]},"data":{"brightness_pct":60}}'
 
 mosquitto_sub -h $BrokerHost -p $BrokerPort -u $MqttUser -P $MqttPass -t "homeassistant/telemetry/#" -v
 ```

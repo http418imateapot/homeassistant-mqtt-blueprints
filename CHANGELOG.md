@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog,
 and this project follows Semantic Versioning.
 
+## [2.2.0] - 2026-06-25
+### Added
+- Added command schema v2 support in `mqtt_command_receiver.yaml` with strict `service`, `target`, `data` envelope handling.
+- Added retained MQTT Discovery config publishing in `mqtt_telemetry_uploader.yaml` for selected entities.
+- Added retained capability metadata topics to describe read/write contracts for downstream integrations.
+- Added blueprint inputs for command schema migration mode and v1 deprecation timeline messaging.
+
+### Changed
+- Command receiver now validates allowlists against service domain and target scope in schema v2 path.
+- Discovery is now the primary capability declaration path; telemetry payload remains stable.
+- Updated README to document schema v2-first command model and discovery/capability topics.
+
+### Deprecated
+- Marked command schema v1 payloads as deprecated and added explicit warning logs with timeline in compatibility mode.
+
 ## [2.1.0] - 2026-06-22
 ### Changed
 - Telemetry publish topic was simplified to `{mqtt_base_topic}/telemetry/{domain}`.

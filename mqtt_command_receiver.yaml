@@ -2,7 +2,8 @@ blueprint:
   name: Universal Local-First MQTT Command Receiver
   description: >
     Listen to MQTT command payloads and dispatch Home Assistant services.
-    Supports climate (mode, temperature), switch (on/off), and light (on/off).
+    Uses schema v2 (service, target, data) as the primary command contract.
+    Optional schema v1 compatibility is available during migration.
   domain: automation
   source_url: https://raw.githubusercontent.com/http418imateapot/homeassistant-mqtt-blueprints/main/mqtt_command_receiver.yaml
 
@@ -55,6 +56,27 @@ blueprint:
       selector:
         boolean:
 
+    command_schema_mode:
+      name: Command Schema Mode
+      description: Choose whether to allow legacy schema v1 during migration.
+      default: v1_v2_compat
+      selector:
+        select:
+          multiple: false
+          custom_value: false
+          options:
+            - label: v1 + v2 (compat)
+              value: v1_v2_compat
+            - label: v2 only
+              value: v2_only
+
+    v1_deprecation_timeline:
+      name: Schema v1 Deprecation Timeline (display)
+      description: Timeline string shown in deprecation warning logs.
+      default: "2026-12-31 (remove in next major release)"
+      selector:
+        text:
+
 mode: parallel
 max: 20
 
@@ -69,6 +91,8 @@ variables:
   _command_areas: !input command_areas
   _command_domains: !input command_domains
   _verbose_debug_logs: !input verbose_debug_logs
+  _command_schema_mode: !input command_schema_mode
+  _v1_deprecation_timeline: !input v1_deprecation_timeline
 
 condition: []
 
@@ -82,18 +106,118 @@ action:
               _payload: "{{ trigger.payload_json | default({}, true) }}"
               _is_mapping: "{{ _payload is mapping }}"
               _payload_len: "{{ trigger.payload | default('', true) | string | length }}"
+              _schema: "{{ _payload.schema | default('v1', true) | string | lower }}"
+              _service: "{{ _payload.service | default('', true) | string | lower }}"
+              _target: "{{ _payload.target | default({}, true) }}"
+              _data: "{{ _payload.data | default({}, true) }}"
+              _selected_domains: "{{ _command_domains | map('lower') | list }}"
+              _service_parts: "{{ _service.split('.') if ('.' in _service) else [] }}"
+              _service_valid: "{{ _service_parts | length == 2 }}"
+              _service_domain: "{{ (_service_parts[0] if (_service_parts | length == 2) else '') }}"
+              _service_domain_allowed: "{{ 'all' in _selected_domains or _service_domain in _selected_domains }}"
+              _target_entity_ids: >
+                {% set entity_ids = _target.entity_id | default([], true) %}
+                {% if entity_ids is string %}
+                  {{ [entity_ids] }}
+                {% elif entity_ids is sequence %}
+                  {{ entity_ids | list }}
+                {% else %}
+                  {{ [] }}
+                {% endif %}
+              _target_area_ids: >
+                {% set area_ids = _target.area_id | default([], true) %}
+                {% if area_ids is string %}
+                  {{ [area_ids] }}
+                {% elif area_ids is sequence %}
+                  {{ area_ids | list }}
+                {% else %}
+                  {{ [] }}
+                {% endif %}
+              _target_domains_match: >
+                {% set ns = namespace(ok=true) %}
+                {% for entity_id in _target_entity_ids %}
+                  {% set domain = (entity_id.split('.')[0]) if ('.' in entity_id) else '' %}
+                  {% if domain != _service_domain %}
+                    {% set ns.ok = false %}
+                  {% endif %}
+                {% endfor %}
+                {{ ns.ok }}
+              _entity_areas_allowed: >
+                {% set ns = namespace(ok=true) %}
+                {% for entity_id in _target_entity_ids %}
+                  {% set entity_area_id = area_id(entity_id) | default('', true) %}
+                  {% if not (_all_command_areas or (_command_areas | length == 0) or (entity_area_id in _command_areas)) %}
+                    {% set ns.ok = false %}
+                  {% endif %}
+                {% endfor %}
+                {{ ns.ok }}
+              _scope_has_entities: "{{ _target_entity_ids | length > 0 }}"
+              _scope_area_allowed: >
+                {% if _all_command_areas or (_command_areas | length == 0) %}
+                  true
+                {% elif _target_area_ids | length > 0 %}
+                  {{ (_target_area_ids | select('in', _command_areas) | list | length) == (_target_area_ids | length) }}
+                {% else %}
+                  false
+                {% endif %}
+              _target_scope_allowed: "{{ (_entity_areas_allowed if _scope_has_entities else _scope_area_allowed) }}"
+              _v2_allowed: >
+                {{
+                  _is_mapping
+                  and _schema == 'v2'
+                  and (_target is mapping)
+                  and (_data is mapping)
+                  and _service_valid
+                  and _service_domain_allowed
+                  and _target_domains_match
+                  and _target_scope_allowed
+                }}
+              _v1_payload_mapping: "{{ _is_mapping and _schema != 'v2' }}"
 
           - service: system_log.write
             data:
               level: debug
               message: >
-                [MQTT_Bridge] command received topic={{ trigger.topic }} payload_length={{ _payload_len }}
+                [MQTT_Bridge] command received topic={{ trigger.topic }} payload_length={{ _payload_len }} schema={{ _schema }}
 
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ _is_mapping }}"
+                    value_template: "{{ _v2_allowed }}"
                 sequence:
+                  - service: system_log.write
+                    data:
+                      level: debug
+                      message: >
+                        [MQTT_Bridge] dispatch schema=v2 service={{ _service }} target={{ _target | tojson }}
+
+                  - service: "{{ _service }}"
+                    target: "{{ _target }}"
+                    data: "{{ _data }}"
+
+              - conditions:
+                  - condition: template
+                    value_template: "{{ _is_mapping and _schema == 'v2' and not _v2_allowed }}"
+                sequence:
+                  - service: system_log.write
+                    data:
+                      level: warning
+                      message: >
+                        [MQTT_Bridge] rejected schema=v2 command. service={{ _service }}, service_valid={{ _service_valid }},
+                        service_domain_allowed={{ _service_domain_allowed }}, target_domains_match={{ _target_domains_match }},
+                        target_scope_allowed={{ _target_scope_allowed }}, target_is_mapping={{ _target is mapping }}, data_is_mapping={{ _data is mapping }}
+
+              - conditions:
+                  - condition: template
+                    value_template: "{{ _v1_payload_mapping and _command_schema_mode == 'v1_v2_compat' }}"
+                sequence:
+                  - service: system_log.write
+                    data:
+                      level: warning
+                      message: >
+                        [MQTT_Bridge] schema v1 command accepted in compatibility mode and is deprecated.
+                        Migrate to schema v2 (service,target,data). Planned removal: {{ _v1_deprecation_timeline }}
+
                   - variables:
                       kv_pairs: "{{ _payload | dictsort }}"
                       parsed_keys: "{{ kv_pairs | map(attribute=0) | list }}"
@@ -112,9 +236,8 @@ action:
                             data_map: "{{ repeat.item[1] }}"
                             domain: "{{ (entity_id.split('.')[0]) if ('.' in entity_id) else '' }}"
                             entity_area_id: "{{ area_id(entity_id) | default('', true) }}"
-                            selected_domains: "{{ _command_domains | map('lower') | list }}"
                             area_allowed: "{{ _all_command_areas or (_command_areas | length == 0) or (entity_area_id in _command_areas) }}"
-                            domain_allowed: "{{ 'all' in selected_domains or domain in selected_domains }}"
+                            domain_allowed: "{{ 'all' in _selected_domains or domain in _selected_domains }}"
                             dispatch_allowed: "{{ area_allowed and domain_allowed }}"
                             power_cmd: "{{ data_map.switch | default(data_map.power, true) | string | lower }}"
                             hvac_cmd: "{{ data_map.mode | default(data_map.hvac_mode, true) | string | lower }}"
@@ -133,13 +256,13 @@ action:
                                           data:
                                             level: debug
                                             message: >
-                                              [MQTT_Bridge] dispatch entity={{ entity_id }}, domain={{ domain }}, fields={{ data_map | list }}
+                                              [MQTT_Bridge] dispatch(v1) entity={{ entity_id }}, domain={{ domain }}, fields={{ data_map | list }}
                                   default:
                                     - service: system_log.write
                                       data:
                                         level: debug
                                         message: >
-                                          [MQTT_Bridge] dispatch entity={{ entity_id }}, domain={{ domain }}
+                                          [MQTT_Bridge] dispatch(v1) entity={{ entity_id }}, domain={{ domain }}
 
                                 - choose:
                                     - conditions:
@@ -210,6 +333,16 @@ action:
                                 level: debug
                                 message: >
                                   [MQTT_Bridge] skipped by whitelist entity={{ entity_id }}, domain={{ domain }}, area_id={{ entity_area_id }}
+
+              - conditions:
+                  - condition: template
+                    value_template: "{{ _v1_payload_mapping and _command_schema_mode == 'v2_only' }}"
+                sequence:
+                  - service: system_log.write
+                    data:
+                      level: warning
+                      message: >
+                        [MQTT_Bridge] schema v1 command rejected because Command Schema Mode is v2_only.
 
               - conditions:
                   - condition: template

@@ -3,7 +3,8 @@ blueprint:
   description: >
     Monitor selected Home Assistant entities and publish grouped telemetry to MQTT.
     Topic format: {mqtt_base_topic}/telemetry/{domain}
-    Payload fields: timestamp, area, trigger_reason, sample_type, telemetries
+    Payload fields: timestamp, area, trigger_reason, sample_type, telemetries.
+    Publishes Home Assistant MQTT Discovery configs (retained) for selected entities.
   domain: automation
   source_url: https://raw.githubusercontent.com/http418imateapot/homeassistant-mqtt-blueprints/main/mqtt_telemetry_uploader.yaml
 
@@ -26,6 +27,13 @@ blueprint:
             - "/5"
             - "/10"
             - "/30"
+
+    mqtt_discovery_prefix:
+      name: MQTT Discovery Prefix
+      description: Discovery base prefix used for retained config topics.
+      default: homeassistant
+      selector:
+        text:
 
     light_entities:
       name: "[LIGHT] Entities"
@@ -78,6 +86,7 @@ max: 20
 variables:
   _base_topic: !input mqtt_base_topic
   _heartbeat_minutes: !input heartbeat_minutes
+  _discovery_prefix: !input mqtt_discovery_prefix
   _lights: !input light_entities
   _switches: !input switch_entities
   _sensors: !input sensor_entities
@@ -85,6 +94,7 @@ variables:
   _climates: !input climate_entities
   _qos: "1"
   _retain: false
+  _discovery_retain: true
   _all_entities: >
     {{
       (
@@ -121,6 +131,131 @@ trigger:
 condition: []
 
 action:
+  - repeat:
+      for_each: "{{ _all_entities }}"
+      sequence:
+        - variables:
+            _entity_id: "{{ repeat.item }}"
+            _domain: "{{ (_entity_id.split('.')[0]) if ('.' in _entity_id) else '' }}"
+            _object_id: "{{ (_entity_id.split('.')[1]) if ('.' in _entity_id) else _entity_id }}"
+            _area: "{{ area_name(_entity_id) }}"
+            _state_topic: "{{ _base_topic }}/telemetry/{{ _domain }}"
+            _availability_topic: "{{ _base_topic }}/telemetry/availability"
+            _entity_name: "{{ state_attr(_entity_id, 'friendly_name') | default(_entity_id, true) }}"
+            _unit: "{{ state_attr(_entity_id, 'unit_of_measurement') | default(none, true) }}"
+            _discovery_component: >
+              {% if _domain == 'binary_sensor' %}
+                binary_sensor
+              {% elif _domain in ['sensor', 'light', 'switch', 'climate'] %}
+                sensor
+              {% else %}
+                {{ '' }}
+              {% endif %}
+            _metric_name: "{{ 'hvac_mode' if _domain == 'climate' else 'state' }}"
+            _discovery_topic: >
+              {% if _discovery_component != '' %}
+                {{ _discovery_prefix }}/{{ _discovery_component }}/mqtt_bridge/{{ _domain }}_{{ _object_id }}/config
+              {% else %}
+                {{ '' }}
+              {% endif %}
+            _capability_topic: "{{ _base_topic }}/telemetry/capabilities/{{ _entity_id | replace('.', '/') }}"
+            _is_writable: "{{ _domain in ['switch', 'light', 'climate'] }}"
+
+        - choose:
+            - conditions:
+                - condition: template
+                  value_template: "{{ _discovery_component | trim != '' and _discovery_topic | trim | length > 0 }}"
+              sequence:
+                - service: mqtt.publish
+                  data:
+                    qos: "{{ _qos }}"
+                    retain: "{{ _discovery_retain }}"
+                    topic: "{{ _discovery_topic }}"
+                    payload: >
+                      {% if _domain == 'sensor' and _unit is not none and (_unit | string) not in ['none', 'None', ''] %}
+                        {{ {
+                          'name': _entity_name,
+                          'unique_id': ('mqtt_bridge_' ~ _entity_id | replace('.', '_')),
+                          'state_topic': _state_topic,
+                          'availability_topic': _availability_topic,
+                          'payload_available': 'online',
+                          'payload_not_available': 'offline',
+                          'value_template': "{{ (value_json.telemetries | selectattr('entity','equalto','" ~ _entity_id ~ "') | selectattr('name','equalto','" ~ _metric_name ~ "') | map(attribute='value') | list | first) }}",
+                          'json_attributes_topic': _capability_topic,
+                          'unit_of_measurement': (_unit | string),
+                          'device': {
+                            'identifiers': ['mqtt_bridge_homeassistant'],
+                            'name': 'MQTT Bridge Home Assistant',
+                            'manufacturer': 'homeassistant-mqtt-blueprints',
+                            'model': 'universal-local-first-bridge'
+                          },
+                          'origin': {
+                            'name': 'homeassistant-mqtt-blueprints',
+                            'sw_version': '2.2.0'
+                          },
+                          'object_id': (_domain ~ '_' ~ _object_id)
+                        } | tojson }}
+                      {% else %}
+                        {{ {
+                          'name': _entity_name,
+                          'unique_id': ('mqtt_bridge_' ~ _entity_id | replace('.', '_')),
+                          'state_topic': _state_topic,
+                          'availability_topic': _availability_topic,
+                          'payload_available': 'online',
+                          'payload_not_available': 'offline',
+                          'value_template': "{{ (value_json.telemetries | selectattr('entity','equalto','" ~ _entity_id ~ "') | selectattr('name','equalto','" ~ _metric_name ~ "') | map(attribute='value') | list | first) }}",
+                          'json_attributes_topic': _capability_topic,
+                          'device': {
+                            'identifiers': ['mqtt_bridge_homeassistant'],
+                            'name': 'MQTT Bridge Home Assistant',
+                            'manufacturer': 'homeassistant-mqtt-blueprints',
+                            'model': 'universal-local-first-bridge'
+                          },
+                          'origin': {
+                            'name': 'homeassistant-mqtt-blueprints',
+                            'sw_version': '2.2.0'
+                          },
+                          'object_id': (_domain ~ '_' ~ _object_id)
+                        } | tojson }}
+                      {% endif %}
+
+                - service: mqtt.publish
+                  data:
+                    qos: "{{ _qos }}"
+                    retain: "{{ _discovery_retain }}"
+                    topic: "{{ _capability_topic }}"
+                    payload: >
+                      {{ {
+                        'entity': _entity_id,
+                        'domain': _domain,
+                        'area': _area,
+                        'read_contract': {
+                          'state_topic': _state_topic,
+                          'metric': _metric_name,
+                          'payload_schema': {
+                            'sample_type': ['event', 'heartbeat'],
+                            'fields': ['timestamp', 'area', 'trigger_reason', 'sample_type', 'telemetries']
+                          }
+                        },
+                        'write_contract': (
+                          {
+                            'schema': 'v2',
+                            'command_topic': _base_topic ~ '/commands',
+                            'envelope': ['service', 'target', 'data'],
+                            'service_domain': _domain,
+                            'target_fields': ['entity_id', 'area_id']
+                          }
+                          if _is_writable else
+                          {
+                            'schema': none,
+                            'command_topic': none,
+                            'envelope': [],
+                            'service_domain': none,
+                            'target_fields': []
+                          }
+                        )
+                      } | tojson }}
+
   - variables:
       _groups_json: >
         {% set ns = namespace(groups = []) %}
@@ -227,3 +362,10 @@ action:
                         'sample_type': ('heartbeat' if trigger.id == 'heartbeat' else 'event'),
                         'telemetries': (_telemetries_json | from_json)
                       } | tojson }}
+
+  - service: mqtt.publish
+    data:
+      qos: "{{ _qos }}"
+      retain: "{{ _discovery_retain }}"
+      topic: "{{ _base_topic }}/telemetry/availability"
+      payload: "online"
