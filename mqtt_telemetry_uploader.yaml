@@ -234,7 +234,7 @@ action:
                           },
                           'origin': {
                             'name': 'homeassistant-mqtt-blueprints',
-                            'sw_version': '2.2.0'
+                            'sw_version': '2.3.0'
                           },
                           'object_id': (_domain ~ '_' ~ _object_id)
                         } | tojson }}
@@ -256,7 +256,7 @@ action:
                           },
                           'origin': {
                             'name': 'homeassistant-mqtt-blueprints',
-                            'sw_version': '2.2.0'
+                            'sw_version': '2.3.0'
                           },
                           'object_id': (_domain ~ '_' ~ _object_id)
                         } | tojson }}

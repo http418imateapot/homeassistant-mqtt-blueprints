@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog,
 and this project follows Semantic Versioning.
 
+## [2.3.0] - 2026-06-29
+### Added
+- Added `cover`, `fan`, and `lock` support to `mqtt_telemetry_uploader.yaml` telemetry publishing and retained MQTT Discovery metadata.
+- Added `cover`, `fan`, and `lock` support to `mqtt_command_receiver.yaml` domain allowlist and legacy v1 power command handling.
+
+### Changed
+- Expanded README examples and command payload documentation for the newly supported domains and MQTT topic input guidance.
+- Release workflow now syncs telemetry discovery `sw_version` from `VERSION` before publishing a GitHub Release.
+
+### Fixed
+- Fixed schema v2 area-only target validation so domain checks work even when commands target only Home Assistant areas.
+- Reduced redundant retained Discovery republishes by limiting them to heartbeat-triggered runs.
+
 ## [2.2.0] - 2026-06-25
 ### Added
 - Added command schema v2 support in `mqtt_command_receiver.yaml` with strict `service`, `target`, `data` envelope handling.
@@ -59,4 +72,3 @@ and this project follows Semantic Versioning.
 - Added mqtt_command_receiver.yaml.
 - Added README with architecture, install steps, and test payload examples.
 - Added Home Assistant focused .gitignore.
-
