@@ -397,14 +397,14 @@ action:
                                                 - condition: template
                                                   value_template: "{{ power_cmd == 'on' }}"
                                               sequence:
-                                                - service: lock.unlock
+                                                - service: lock.lock
                                                   target:
                                                     entity_id: "{{ entity_id }}"
                                             - conditions:
                                                 - condition: template
                                                   value_template: "{{ power_cmd == 'off' }}"
                                               sequence:
-                                                - service: lock.lock
+                                                - service: lock.unlock
                                                   target:
                                                     entity_id: "{{ entity_id }}"
                           default:
