@@ -35,7 +35,7 @@ This is the current design baseline for open-source release:
 - Command receiver is schema v2 first and dispatches Home Assistant-native service calls using `service`, `target`, and `data`.
 - Command receiver includes whitelist controls by area and domain:
   - Area filter: `All Areas` + `Allowed Areas`
-  - Domain filter: `Allowed Domains` (`all`, `climate`, `switch`, `light`)
+  - Domain filter: `Allowed Domains` (`all`, `climate`, `cover`, `fan`, `light`, `lock`, `switch`)
 - Command schema compatibility controls:
   - `Command Schema Mode`: `v1_v2_compat` or `v2_only`
   - `Schema v1 Deprecation Timeline`: log display only for migration messaging
@@ -198,6 +198,89 @@ Heartbeat messages use the same payload shape, but set `sample_type` to `heartbe
 }
 ```
 
+#### Cover
+
+```json
+{
+  "timestamp": "2026-06-20T12:34:56.789000Z",
+  "area": "living_room",
+  "trigger_reason": "state_changed",
+  "sample_type": "event",
+  "telemetries": [
+    {
+      "name": "state",
+      "value": "open",
+      "entity": "cover.living_room_blind",
+      "friendly_name": "Living Room Blind",
+      "domain": "cover",
+      "unit": null
+    },
+    {
+      "name": "position",
+      "value": 80,
+      "entity": "cover.living_room_blind",
+      "friendly_name": "Living Room Blind",
+      "domain": "cover",
+      "unit": "%"
+    }
+  ]
+}
+```
+
+`position` is only included when the cover entity exposes a `current_position` attribute.
+
+#### Fan
+
+```json
+{
+  "timestamp": "2026-06-20T12:34:56.789000Z",
+  "area": "bedroom",
+  "trigger_reason": "state_changed",
+  "sample_type": "event",
+  "telemetries": [
+    {
+      "name": "state",
+      "value": "on",
+      "entity": "fan.bedroom_fan",
+      "friendly_name": "Bedroom Fan",
+      "domain": "fan",
+      "unit": null
+    },
+    {
+      "name": "percentage",
+      "value": 50,
+      "entity": "fan.bedroom_fan",
+      "friendly_name": "Bedroom Fan",
+      "domain": "fan",
+      "unit": "%"
+    }
+  ]
+}
+```
+
+`percentage` is only included when the fan entity exposes a `percentage` attribute.
+
+#### Lock
+
+```json
+{
+  "timestamp": "2026-06-20T12:34:56.789000Z",
+  "area": "entrance",
+  "trigger_reason": "state_changed",
+  "sample_type": "event",
+  "telemetries": [
+    {
+      "name": "state",
+      "value": "locked",
+      "entity": "lock.front_door",
+      "friendly_name": "Front Door",
+      "domain": "lock",
+      "unit": null
+    }
+  ]
+}
+```
+
 ### Command Payload v2 (Subscriber, Preferred)
 
 ```json
@@ -310,6 +393,75 @@ Climate set temperature:
 }
 ```
 
+Cover open:
+
+```json
+{
+  "schema": "v2",
+  "service": "cover.open_cover",
+  "target": {
+    "entity_id": ["cover.living_room_blind"]
+  },
+  "data": {}
+}
+```
+
+Cover set position:
+
+```json
+{
+  "schema": "v2",
+  "service": "cover.set_cover_position",
+  "target": {
+    "entity_id": ["cover.living_room_blind"]
+  },
+  "data": {
+    "position": 50
+  }
+}
+```
+
+Fan turn on with speed:
+
+```json
+{
+  "schema": "v2",
+  "service": "fan.turn_on",
+  "target": {
+    "entity_id": ["fan.bedroom_fan"]
+  },
+  "data": {
+    "percentage": 60
+  }
+}
+```
+
+Lock lock:
+
+```json
+{
+  "schema": "v2",
+  "service": "lock.lock",
+  "target": {
+    "entity_id": ["lock.front_door"]
+  },
+  "data": {}
+}
+```
+
+Lock unlock:
+
+```json
+{
+  "schema": "v2",
+  "service": "lock.unlock",
+  "target": {
+    "entity_id": ["lock.front_door"]
+  },
+  "data": {}
+}
+```
+
 Publish the JSON payload to the receiver topic (default `homeassistant/commands`).
 
 ### Capability Payload (Retained)
@@ -351,7 +503,7 @@ Payload fields:
 | `service_domain` | string or null | Expected service domain for this entity. |
 | `target_fields` | array | Supported target keys (`entity_id`, `area_id`). |
 
-Writable domains currently: `switch`, `light`, `climate`.
+Writable domains currently: `switch`, `light`, `climate`, `cover`, `fan`, `lock`.
 
 Read-only domains currently: `sensor`, `binary_sensor`.
 
@@ -424,7 +576,7 @@ v1 is accepted only when `Command Schema Mode` is `v1_v2_compat` and logs explic
 4. Configure command whitelist filters:
   - `All Areas`: enabled means area filter is bypassed.
   - `Allowed Areas`: used only when `All Areas` is disabled.
-  - `Allowed Domains`: supports `all`, `climate`, `switch`, `light`.
+  - `Allowed Domains`: supports `all`, `climate`, `cover`, `fan`, `light`, `lock`, `switch`.
   - `Verbose Debug Logs`: optional detailed debug fields for troubleshooting.
 5. Publish a JSON command payload to `homeassistant/commands`.
 6. Verify telemetry messages under `homeassistant/telemetry/{domain}`.
@@ -561,9 +713,11 @@ Subscriber handling guidance:
 
 After enabling the uploader automation:
 
-1. Toggle a selected `light` or `switch` in Home Assistant UI.
-2. Change a selected `climate` mode/temperature.
-3. Wait for heartbeat updates for the selected domain if no immediate state trigger applies.
+1. Toggle a selected `light`, `switch`, or `lock` in Home Assistant UI.
+2. Open or close a selected `cover`.
+3. Turn on or off a selected `fan`.
+4. Change a selected `climate` mode/temperature.
+5. Wait for heartbeat updates for the selected domain if no immediate state trigger applies.
 
 If everything is configured correctly, messages should appear under:
 

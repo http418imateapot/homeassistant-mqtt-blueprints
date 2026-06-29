@@ -10,7 +10,7 @@ blueprint:
   input:
     mqtt_command_topic:
       name: MQTT Command Topic
-      description: MQTT topic used for inbound commands.
+      description: "MQTT topic used for inbound commands. Do not include leading or trailing slashes or spaces. Example: homeassistant/commands"
       default: homeassistant/commands
       selector:
         text:
@@ -44,10 +44,16 @@ blueprint:
               value: all
             - label: Climate
               value: climate
-            - label: Switch
-              value: switch
+            - label: Cover
+              value: cover
+            - label: Fan
+              value: fan
             - label: Light
               value: light
+            - label: Lock
+              value: lock
+            - label: Switch
+              value: switch
 
     verbose_debug_logs:
       name: Verbose Debug Logs
@@ -134,14 +140,28 @@ action:
                   {{ [] }}
                 {% endif %}
               _target_domains_match: >
-                {% set ns = namespace(ok=true) %}
-                {% for entity_id in _target_entity_ids %}
-                  {% set domain = (entity_id.split('.')[0]) if ('.' in entity_id) else '' %}
-                  {% if domain != _service_domain %}
-                    {% set ns.ok = false %}
-                  {% endif %}
-                {% endfor %}
-                {{ ns.ok }}
+                {% if _target_entity_ids | length > 0 %}
+                  {% set ns = namespace(ok=true) %}
+                  {% for entity_id in _target_entity_ids %}
+                    {% set domain = (entity_id.split('.')[0]) if ('.' in entity_id) else '' %}
+                    {% if domain != _service_domain %}
+                      {% set ns.ok = false %}
+                    {% endif %}
+                  {% endfor %}
+                  {{ ns.ok }}
+                {% elif _target_area_ids | length > 0 %}
+                  {% set ns = namespace(ok=false) %}
+                  {% for area in _target_area_ids %}
+                    {% for e in area_entities(area) %}
+                      {% if (e.split('.')[0]) == _service_domain %}
+                        {% set ns.ok = true %}
+                      {% endif %}
+                    {% endfor %}
+                  {% endfor %}
+                  {{ ns.ok }}
+                {% else %}
+                  true
+                {% endif %}
               _entity_areas_allowed: >
                 {% set ns = namespace(ok=true) %}
                 {% for entity_id in _target_entity_ids %}
@@ -325,6 +345,66 @@ action:
                                                   value_template: "{{ power_cmd == 'off' }}"
                                               sequence:
                                                 - service: light.turn_off
+                                                  target:
+                                                    entity_id: "{{ entity_id }}"
+
+                                    - conditions:
+                                        - condition: template
+                                          value_template: "{{ domain == 'cover' }}"
+                                      sequence:
+                                        - choose:
+                                            - conditions:
+                                                - condition: template
+                                                  value_template: "{{ power_cmd == 'on' }}"
+                                              sequence:
+                                                - service: cover.open_cover
+                                                  target:
+                                                    entity_id: "{{ entity_id }}"
+                                            - conditions:
+                                                - condition: template
+                                                  value_template: "{{ power_cmd == 'off' }}"
+                                              sequence:
+                                                - service: cover.close_cover
+                                                  target:
+                                                    entity_id: "{{ entity_id }}"
+
+                                    - conditions:
+                                        - condition: template
+                                          value_template: "{{ domain == 'fan' }}"
+                                      sequence:
+                                        - choose:
+                                            - conditions:
+                                                - condition: template
+                                                  value_template: "{{ power_cmd == 'on' }}"
+                                              sequence:
+                                                - service: fan.turn_on
+                                                  target:
+                                                    entity_id: "{{ entity_id }}"
+                                            - conditions:
+                                                - condition: template
+                                                  value_template: "{{ power_cmd == 'off' }}"
+                                              sequence:
+                                                - service: fan.turn_off
+                                                  target:
+                                                    entity_id: "{{ entity_id }}"
+
+                                    - conditions:
+                                        - condition: template
+                                          value_template: "{{ domain == 'lock' }}"
+                                      sequence:
+                                        - choose:
+                                            - conditions:
+                                                - condition: template
+                                                  value_template: "{{ power_cmd == 'on' }}"
+                                              sequence:
+                                                - service: lock.unlock
+                                                  target:
+                                                    entity_id: "{{ entity_id }}"
+                                            - conditions:
+                                                - condition: template
+                                                  value_template: "{{ power_cmd == 'off' }}"
+                                              sequence:
+                                                - service: lock.lock
                                                   target:
                                                     entity_id: "{{ entity_id }}"
                           default:

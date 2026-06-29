@@ -20,6 +20,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Sync sw_version from VERSION file
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          sed -i "s/'sw_version': '[^']*'/'sw_version': '${VERSION}'/g" mqtt_telemetry_uploader.yaml
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add mqtt_telemetry_uploader.yaml
+          git diff --cached --quiet || git commit -m "chore: sync sw_version to ${VERSION} [skip ci]"
+          git push origin HEAD:main
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:

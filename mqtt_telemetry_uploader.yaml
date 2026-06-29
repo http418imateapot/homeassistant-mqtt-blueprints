@@ -11,14 +11,14 @@ blueprint:
   input:
     mqtt_base_topic:
       name: MQTT Base Topic
-      description: Base topic for outgoing telemetry.
+      description: "Base topic for outgoing telemetry. Do not include leading or trailing slashes or spaces. Example: homeassistant"
       default: homeassistant
       selector:
         text:
 
     heartbeat_minutes:
       name: Heartbeat Interval (minutes)
-      description: Periodic publish interval for non-stateful sensors.
+      description: "Periodic publish interval for non-stateful sensors. Uses HA time_pattern minutes syntax. Predefined options: /1, /5, /10, /30. Custom values are also accepted (e.g. /15)."
       default: "/1"
       selector:
         select:
@@ -27,6 +27,7 @@ blueprint:
             - "/5"
             - "/10"
             - "/30"
+          custom_value: true
 
     mqtt_discovery_prefix:
       name: MQTT Discovery Prefix
@@ -80,6 +81,33 @@ blueprint:
           filter:
             domain: climate
 
+    cover_entities:
+      name: "[COVER] Entities"
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            domain: cover
+
+    fan_entities:
+      name: "[FAN] Entities"
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            domain: fan
+
+    lock_entities:
+      name: "[LOCK] Entities"
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            domain: lock
+
 mode: parallel
 max: 20
 
@@ -92,6 +120,9 @@ variables:
   _sensors: !input sensor_entities
   _binary_sensors: !input binary_sensor_entities
   _climates: !input climate_entities
+  _covers: !input cover_entities
+  _fans: !input fan_entities
+  _locks: !input lock_entities
   _qos: "1"
   _retain: false
   _discovery_retain: true
@@ -103,6 +134,9 @@ variables:
         + (_sensors | default([], true))
         + (_binary_sensors | default([], true))
         + (_climates | default([], true))
+        + (_covers | default([], true))
+        + (_fans | default([], true))
+        + (_locks | default([], true))
       )
       | unique
       | list
@@ -123,6 +157,15 @@ trigger:
     id: state_changed
   - platform: state
     entity_id: !input climate_entities
+    id: state_changed
+  - platform: state
+    entity_id: !input cover_entities
+    id: state_changed
+  - platform: state
+    entity_id: !input fan_entities
+    id: state_changed
+  - platform: state
+    entity_id: !input lock_entities
     id: state_changed
   - platform: time_pattern
     minutes: !input heartbeat_minutes
@@ -146,7 +189,7 @@ action:
             _discovery_component: >
               {% if _domain == 'binary_sensor' %}
                 binary_sensor
-              {% elif _domain in ['sensor', 'light', 'switch', 'climate'] %}
+              {% elif _domain in ['sensor', 'light', 'switch', 'climate', 'cover', 'fan', 'lock'] %}
                 sensor
               {% else %}
                 {{ '' }}
@@ -159,12 +202,12 @@ action:
                 {{ '' }}
               {% endif %}
             _capability_topic: "{{ _base_topic }}/telemetry/capabilities/{{ _entity_id | replace('.', '/') }}"
-            _is_writable: "{{ _domain in ['switch', 'light', 'climate'] }}"
+            _is_writable: "{{ _domain in ['switch', 'light', 'climate', 'cover', 'fan', 'lock'] }}"
 
         - choose:
             - conditions:
                 - condition: template
-                  value_template: "{{ _discovery_component | trim != '' and _discovery_topic | trim | length > 0 }}"
+                  value_template: "{{ _discovery_component | trim != '' and _discovery_topic | trim | length > 0 and trigger.id == 'heartbeat' }}"
               sequence:
                 - service: mqtt.publish
                   data:
@@ -303,7 +346,7 @@ action:
                 {% set friendly_name = state_attr(i.entity, 'friendly_name') | default(i.entity, true) | string %}
                 {% set unit = state_attr(i.entity, 'unit_of_measurement') | default(none, true) %}
                 {% set state = states(i.entity) %}
-                {% if i.domain in ['light', 'switch', 'sensor', 'binary_sensor'] %}
+                {% if i.domain in ['light', 'switch', 'sensor', 'binary_sensor', 'lock'] %}
                   {% set parsed = state | float(none) %}
                   {% set ns.items = ns.items + [{
                     'name': 'state',
@@ -338,6 +381,52 @@ action:
                       'friendly_name': friendly_name,
                       'domain': i.domain,
                       'unit': (temp_unit | string if temp_unit is not none else none)
+                    }] %}
+                  {% endif %}
+                {% elif i.domain == 'cover' %}
+                  {% set cover_state = state if state not in ['none', 'unavailable', 'unknown', None] else none %}
+                  {% if cover_state is not none %}
+                    {% set ns.items = ns.items + [{
+                      'name': 'state',
+                      'value': cover_state,
+                      'entity': i.entity,
+                      'friendly_name': friendly_name,
+                      'domain': i.domain,
+                      'unit': none
+                    }] %}
+                  {% endif %}
+                  {% set position = state_attr(i.entity, 'current_position') %}
+                  {% if position is not none %}
+                    {% set ns.items = ns.items + [{
+                      'name': 'position',
+                      'value': (position | int(none)),
+                      'entity': i.entity,
+                      'friendly_name': friendly_name,
+                      'domain': i.domain,
+                      'unit': '%'
+                    }] %}
+                  {% endif %}
+                {% elif i.domain == 'fan' %}
+                  {% set fan_state = state if state not in ['none', 'unavailable', 'unknown', None] else none %}
+                  {% if fan_state is not none %}
+                    {% set ns.items = ns.items + [{
+                      'name': 'state',
+                      'value': fan_state,
+                      'entity': i.entity,
+                      'friendly_name': friendly_name,
+                      'domain': i.domain,
+                      'unit': none
+                    }] %}
+                  {% endif %}
+                  {% set percentage = state_attr(i.entity, 'percentage') %}
+                  {% if percentage is not none %}
+                    {% set ns.items = ns.items + [{
+                      'name': 'percentage',
+                      'value': (percentage | int(none)),
+                      'entity': i.entity,
+                      'friendly_name': friendly_name,
+                      'domain': i.domain,
+                      'unit': '%'
                     }] %}
                   {% endif %}
                 {% endif %}
