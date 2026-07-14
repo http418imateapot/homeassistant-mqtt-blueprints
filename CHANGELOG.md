@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog,
 and this project follows Semantic Versioning.
 
+## [Unreleased]
+### Added
+- Added `docs/migration-guide-v1-to-v2.md` as a standalone migration reference for command schema migration and external linking.
+
+### Changed
+- Expanded `README.md` with a support matrix for Home Assistant, MQTT broker compatibility, and tested domain capability scope.
+- Expanded `README.md` with additional telemetry, command, capability, discovery, heartbeat, and area-targeted command examples.
+- Expanded `README.md` with a documented v1 -> v2 command schema migration guide and migration checklist.
+- Expanded `CONTRIBUTING.md` with project scope, contribution workflow, validation guidance, compatibility expectations, and documentation requirements.
+
 ## [2.3.0] - 2026-06-29
 ### Added
 - Added `cover`, `fan`, and `lock` support to `mqtt_telemetry_uploader.yaml` telemetry publishing and retained MQTT Discovery metadata.
