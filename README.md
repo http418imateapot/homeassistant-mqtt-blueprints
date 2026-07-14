@@ -44,6 +44,49 @@ This is the current design baseline for open-source release:
   - Optional verbose debug mode can show command field names.
 - Heartbeat interval is constrained to predefined options (`/1`, `/5`, `/10`, `/30`) to avoid invalid input.
 
+## Support Matrix
+
+### Home Assistant
+
+| Area | Support Status | Notes |
+|---|---|---|
+| Home Assistant blueprint import | Supported | Blueprints are designed for import through public raw GitHub URLs. |
+| Home Assistant automation blueprint domain | Required | Both blueprints require `blueprint.domain: automation`. |
+| Command receiver service dispatch | Supported | Uses native Home Assistant service calls with `service`, `target`, and `data`. |
+| Area-based allowlist enforcement | Supported | Area validation is applied in schema v2 command flow. |
+
+### MQTT Broker Compatibility
+
+| Broker Capability | Status | Notes |
+|---|---|---|
+| MQTT 3.1.1 style topic publish/subscribe | Supported | Standard publish/subscribe usage only. |
+| Retained messages | Required for full feature set | Used for telemetry availability, discovery config, and capability metadata topics. |
+| Username/password authentication | Supported | Recommended for production brokers. |
+| TLS | Recommended | Strongly recommended for production or remote access scenarios. |
+| Broker-specific extensions | Not required | Project is intended to remain vendor-neutral. |
+
+This project is expected to work with any broker that correctly supports standard MQTT publish/subscribe behavior and retained messages. If a broker has unusual retained-message behavior, discovery and capability metadata may not behave as expected.
+
+### Tested Domain Capability Scope
+
+| Domain | Telemetry Uploader | Command Receiver | Discovery | Notes |
+|---|---|---|---|---|
+| `sensor` | Supported | No | Supported | Read-only telemetry domain. |
+| `binary_sensor` | Supported | No | Supported | Read-only telemetry domain. |
+| `light` | Supported | Supported | Supported | Writable via schema v2 service calls. |
+| `switch` | Supported | Supported | Supported | Writable via schema v2 service calls. |
+| `climate` | Supported | Supported | Supported | Supports `hvac_mode` and `temperature` telemetry records. |
+| `cover` | Supported | Supported | Limited | `position` telemetry emitted when `current_position` is available. |
+| `fan` | Supported | Supported | Limited | `percentage` telemetry emitted when available. |
+| `lock` | Supported | Supported | Limited | Telemetry is state-based. |
+
+Current discovery implementation maps:
+
+- `binary_sensor` entities -> Discovery component `binary_sensor`
+- `sensor`, `switch`, `light`, `climate` entities -> Discovery component `sensor`
+
+Support for additional discovery mappings may be added over time.
+
 ## MQTT Topic Conventions
 
 ### Telemetry Publish Topic
@@ -98,12 +141,12 @@ Telemetry record fields:
 
 | Field | Type | Description |
 |---|---|---|
-| `name` | string | Metric name (`state`, `hvac_mode`, `temperature`). |
+| `name` | string | Metric name (`state`, `hvac_mode`, `temperature`, `position`, `percentage`). |
 | `value` | string, number, or null | Metric value. |
 | `entity` | string | Entity id, for example `light.desk_lamp`. |
 | `friendly_name` | string | Display label only. Not identity or authorization key. |
 | `domain` | string | Entity domain. |
-| `unit` | string or null | Unit when available (mostly sensors and climate temperature). |
+| `unit` | string or null | Unit when available (mostly sensors, climate temperature, cover position, and fan percentage). |
 
 `sample_type` indicates whether a message is a real state event or a periodic heartbeat snapshot.
 
@@ -167,9 +210,28 @@ Record fields per telemetry item are strict and fixed:
 
 `light`, `switch`, and `binary_sensor` use the same single `state` record shape, with `unit` set to `null`.
 
-Heartbeat messages use the same payload shape, but set `sample_type` to `heartbeat`.
+#### Heartbeat Example
 
-#### Climate
+```json
+{
+  "timestamp": "2026-06-20T12:35:00.000000Z",
+  "area": "living_room",
+  "trigger_reason": "heartbeat",
+  "sample_type": "heartbeat",
+  "telemetries": [
+    {
+      "name": "state",
+      "value": "on",
+      "entity": "light.desk_lamp",
+      "friendly_name": "Desk Lamp",
+      "domain": "light",
+      "unit": null
+    }
+  ]
+}
+```
+
+#### Climate Example
 
 ```json
 {
@@ -198,7 +260,7 @@ Heartbeat messages use the same payload shape, but set `sample_type` to `heartbe
 }
 ```
 
-#### Cover
+#### Cover Example
 
 ```json
 {
@@ -229,7 +291,7 @@ Heartbeat messages use the same payload shape, but set `sample_type` to `heartbe
 
 `position` is only included when the cover entity exposes a `current_position` attribute.
 
-#### Fan
+#### Fan Example
 
 ```json
 {
@@ -260,7 +322,7 @@ Heartbeat messages use the same payload shape, but set `sample_type` to `heartbe
 
 `percentage` is only included when the fan entity exposes a `percentage` attribute.
 
-#### Lock
+#### Lock Example
 
 ```json
 {
@@ -335,7 +397,7 @@ If only `target.area_id` is provided, all listed area ids must be within the all
 
 ### How To Send Commands To HA Entities
 
-Light turn on:
+#### Light turn on
 
 ```json
 {
@@ -350,7 +412,7 @@ Light turn on:
 }
 ```
 
-Switch turn off:
+#### Switch turn off
 
 ```json
 {
@@ -363,7 +425,7 @@ Switch turn off:
 }
 ```
 
-Climate set HVAC mode:
+#### Climate set HVAC mode
 
 ```json
 {
@@ -378,7 +440,7 @@ Climate set HVAC mode:
 }
 ```
 
-Climate set temperature:
+#### Climate set temperature
 
 ```json
 {
@@ -393,7 +455,7 @@ Climate set temperature:
 }
 ```
 
-Cover open:
+#### Cover open
 
 ```json
 {
@@ -406,7 +468,7 @@ Cover open:
 }
 ```
 
-Cover set position:
+#### Cover set position
 
 ```json
 {
@@ -421,7 +483,7 @@ Cover set position:
 }
 ```
 
-Fan turn on with speed:
+#### Fan turn on with speed
 
 ```json
 {
@@ -436,7 +498,7 @@ Fan turn on with speed:
 }
 ```
 
-Lock lock:
+#### Lock lock
 
 ```json
 {
@@ -449,7 +511,7 @@ Lock lock:
 }
 ```
 
-Lock unlock:
+#### Lock unlock
 
 ```json
 {
@@ -457,6 +519,19 @@ Lock unlock:
   "service": "lock.unlock",
   "target": {
     "entity_id": ["lock.front_door"]
+  },
+  "data": {}
+}
+```
+
+#### Area-targeted command example
+
+```json
+{
+  "schema": "v2",
+  "service": "light.turn_off",
+  "target": {
+    "area_id": ["living_room"]
   },
   "data": {}
 }
@@ -507,14 +582,59 @@ Writable domains currently: `switch`, `light`, `climate`, `cover`, `fan`, `lock`
 
 Read-only domains currently: `sensor`, `binary_sensor`.
 
+#### Capability Payload Example (Writable Domain)
+
+```json
+{
+  "entity": "light.desk_lamp",
+  "domain": "light",
+  "area": "living_room",
+  "read_contract": {
+    "state_topic": "homeassistant/telemetry/light",
+    "metric": "state",
+    "payload_schema": {
+      "sample_type": ["event", "heartbeat"],
+      "fields": ["timestamp", "area", "trigger_reason", "sample_type", "telemetries"]
+    }
+  },
+  "write_contract": {
+    "schema": "v2",
+    "command_topic": "homeassistant/commands",
+    "envelope": ["schema", "service", "target", "data"],
+    "service_domain": "light",
+    "target_fields": ["entity_id", "area_id"]
+  }
+}
+```
+
+#### Capability Payload Example (Read-Only Domain)
+
+```json
+{
+  "entity": "sensor.living_room_temperature",
+  "domain": "sensor",
+  "area": "living_room",
+  "read_contract": {
+    "state_topic": "homeassistant/telemetry/sensor",
+    "metric": "state",
+    "payload_schema": {
+      "sample_type": ["event", "heartbeat"],
+      "fields": ["timestamp", "area", "trigger_reason", "sample_type", "telemetries"]
+    }
+  },
+  "write_contract": {
+    "schema": null,
+    "command_topic": null,
+    "envelope": [],
+    "service_domain": null,
+    "target_fields": []
+  }
+}
+```
+
 ### Discovery Payload (Retained)
 
 Uploader publishes retained MQTT Discovery config per selected entity.
-
-Current implementation maps:
-
-- `binary_sensor` entities -> Discovery component `binary_sensor`
-- `sensor`, `switch`, `light`, `climate` entities -> Discovery component `sensor`
 
 Common Discovery payload keys include:
 
@@ -528,6 +648,22 @@ Common Discovery payload keys include:
 - `device`
 - `origin`
 - `object_id`
+
+#### Discovery Payload Example
+
+```json
+{
+  "name": "Desk Lamp",
+  "unique_id": "mqtt_bridge_light_desk_lamp_state",
+  "state_topic": "homeassistant/telemetry/light",
+  "availability_topic": "homeassistant/telemetry/availability",
+  "payload_available": "online",
+  "payload_not_available": "offline",
+  "value_template": "{{ value_json.telemetries | selectattr('entity', 'equalto', 'light.desk_lamp') | selectattr('name', 'equalto', 'state') | map(attribute='value') | first }}",
+  "json_attributes_topic": "homeassistant/telemetry/light",
+  "object_id": "light_desk_lamp_state"
+}
+```
 
 ### Command Payload v1 (Deprecated Compatibility)
 
@@ -547,6 +683,191 @@ Common Discovery payload keys include:
 ```
 
 v1 is accepted only when `Command Schema Mode` is `v1_v2_compat` and logs explicit deprecation warnings.
+
+## Migration Guide
+
+### v1 -> v2 Command Schema Migration
+
+Schema v2 is the preferred command contract. It is explicit, closer to native Home Assistant service calls, and easier to validate safely.
+
+#### What changed
+
+| Area | v1 | v2 |
+|---|---|---|
+| Top-level structure | Entity-id keyed object | Explicit envelope with `schema`, `service`, `target`, `data` |
+| Dispatch model | Blueprint interprets per-entity command shape | Blueprint dispatches native Home Assistant service calls |
+| Validation | Looser, legacy compatibility path | Stronger validation on service domain, target shape, and area/domain allowlists |
+| Extensibility | Harder to extend consistently | Easier to support new domains and service calls |
+| Recommended status | Deprecated | Preferred |
+
+#### Migration steps
+
+1. Keep receiver `Command Schema Mode` at `v1_v2_compat` during transition.
+2. Update command publishers to send schema v2 envelopes.
+3. Validate area allowlist and domain allowlist behavior in your environment.
+4. Confirm downstream apps no longer publish v1 payloads.
+5. Switch `Command Schema Mode` to `v2_only`.
+
+#### Mapping examples
+
+##### Light power on
+
+v1:
+
+```json
+{
+  "light.desk_light": {
+    "power": "on"
+  }
+}
+```
+
+v2:
+
+```json
+{
+  "schema": "v2",
+  "service": "light.turn_on",
+  "target": {
+    "entity_id": ["light.desk_light"]
+  },
+  "data": {}
+}
+```
+
+##### Light power off
+
+v1:
+
+```json
+{
+  "light.desk_light": {
+    "power": "off"
+  }
+}
+```
+
+v2:
+
+```json
+{
+  "schema": "v2",
+  "service": "light.turn_off",
+  "target": {
+    "entity_id": ["light.desk_light"]
+  },
+  "data": {}
+}
+```
+
+##### Switch on
+
+v1:
+
+```json
+{
+  "switch.kitchen_fan": {
+    "switch": "on"
+  }
+}
+```
+
+v2:
+
+```json
+{
+  "schema": "v2",
+  "service": "switch.turn_on",
+  "target": {
+    "entity_id": ["switch.kitchen_fan"]
+  },
+  "data": {}
+}
+```
+
+##### Climate mode and temperature
+
+v1:
+
+```json
+{
+  "climate.bedroom_ac": {
+    "mode": "cool",
+    "temperature": 24
+  }
+}
+```
+
+v2 split into one or more native service calls depending on your workflow:
+
+```json
+{
+  "schema": "v2",
+  "service": "climate.set_hvac_mode",
+  "target": {
+    "entity_id": ["climate.bedroom_ac"]
+  },
+  "data": {
+    "hvac_mode": "cool"
+  }
+}
+```
+
+```json
+{
+  "schema": "v2",
+  "service": "climate.set_temperature",
+  "target": {
+    "entity_id": ["climate.bedroom_ac"]
+  },
+  "data": {
+    "temperature": 24
+  }
+}
+```
+
+##### Cover position
+
+v2:
+
+```json
+{
+  "schema": "v2",
+  "service": "cover.set_cover_position",
+  "target": {
+    "entity_id": ["cover.living_room_blind"]
+  },
+  "data": {
+    "position": 50
+  }
+}
+```
+
+##### Fan percentage
+
+v2:
+
+```json
+{
+  "schema": "v2",
+  "service": "fan.turn_on",
+  "target": {
+    "entity_id": ["fan.bedroom_fan"]
+  },
+  "data": {
+    "percentage": 60
+  }
+}
+```
+
+#### Migration checklist
+
+- [ ] All publishers emit `schema: v2`.
+- [ ] All commands use `service`, `target`, and `data`.
+- [ ] No external publisher still sends v1 entity-keyed payloads.
+- [ ] `Allowed Domains` includes every required writable domain.
+- [ ] Area allowlist configuration matches intended target scope.
+- [ ] Receiver can be switched to `v2_only` without breaking existing clients.
 
 ## Installation
 
@@ -654,7 +975,7 @@ $MqttPass = "your_password"
 
 mosquitto_pub -h $BrokerHost -p $BrokerPort -u $MqttUser -P $MqttPass -t "homeassistant/commands" -m '{"switch.kitchen_fan":{"switch":"on"},"light.desk_light":{"power":"off"},"climate.bedroom_ac":{"mode":"cool","temperature":24}}'
 
-mosquitto_pub -h $BrokerHost -p $BrokerPort -u $MqttUser -P $MqttPass -t "homeassistant/commands" -m '{"schema":"v2","service":"light.turn_on","target":{"entity_id":["light.desk_light"]},"data":{"brightness_pct":60}}'
+mosquitto_pub -h $BrokerHost -p $BrokerPort -u $MqttUser -P $MqttPass -t "homeassistant/commands" -m '{"schema":"v2","service":"light.turn_on","target":{"entity_id":["light.desk_light"]},"data":{"brightness_pct":70}}'
 
 mosquitto_sub -h $BrokerHost -p $BrokerPort -u $MqttUser -P $MqttPass -t "homeassistant/telemetry/#" -v
 ```
@@ -684,7 +1005,7 @@ Expected heartbeat payload example:
 
 ```json
 {
-  "timestamp": "2026-06-20T12:34:56.789000Z",
+  "timestamp": "2026-06-20T12:35:00.000000Z",
   "area": "living_room",
   "trigger_reason": "heartbeat",
   "sample_type": "heartbeat",
@@ -776,7 +1097,7 @@ python ./tools/check_blueprints.py
 
 This repository includes simple GitHub-friendly version files:
 
-- `VERSION`: current project version (for example `2.1.0`).
+- `VERSION`: current project version (for example `2.3.0`).
 - `CHANGELOG.md`: human-readable release history.
 - `.github/release.yml`: release note category rules for GitHub Releases.
 
@@ -784,7 +1105,7 @@ Recommended release flow:
 
 1. Update `VERSION`.
 2. Add a new section to `CHANGELOG.md`.
-3. Commit changes and create a tag (for example `v2.1.1`).
+3. Commit changes and create a tag (for example `v2.3.1`).
 4. Publish a GitHub Release from the tag.
 
 ## License
