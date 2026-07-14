@@ -15,6 +15,14 @@ A plug-and-play blueprint set for bridging Home Assistant entities with a local 
 1. mqtt_telemetry_uploader.yaml
 2. mqtt_command_receiver.yaml
 
+## Migration and Compatibility
+
+If you are upgrading command publishers from the legacy entity-keyed command format, start here:
+
+- **[Command Schema v1 -> v2 Migration Guide](docs/migration-guide-v1-to-v2.md)**
+
+This guide includes schema comparisons, migration steps, validation notes, rollout guidance, and command mapping examples.
+
 ## Architecture
 
 ```mermaid
@@ -690,6 +698,10 @@ v1 is accepted only when `Command Schema Mode` is `v1_v2_compat` and logs explic
 
 Schema v2 is the preferred command contract. It is explicit, closer to native Home Assistant service calls, and easier to validate safely.
 
+For the full standalone guide, see:
+
+- **[docs/migration-guide-v1-to-v2.md](docs/migration-guide-v1-to-v2.md)**
+
 #### What changed
 
 | Area | v1 | v2 |
@@ -707,158 +719,6 @@ Schema v2 is the preferred command contract. It is explicit, closer to native Ho
 3. Validate area allowlist and domain allowlist behavior in your environment.
 4. Confirm downstream apps no longer publish v1 payloads.
 5. Switch `Command Schema Mode` to `v2_only`.
-
-#### Mapping examples
-
-##### Light power on
-
-v1:
-
-```json
-{
-  "light.desk_light": {
-    "power": "on"
-  }
-}
-```
-
-v2:
-
-```json
-{
-  "schema": "v2",
-  "service": "light.turn_on",
-  "target": {
-    "entity_id": ["light.desk_light"]
-  },
-  "data": {}
-}
-```
-
-##### Light power off
-
-v1:
-
-```json
-{
-  "light.desk_light": {
-    "power": "off"
-  }
-}
-```
-
-v2:
-
-```json
-{
-  "schema": "v2",
-  "service": "light.turn_off",
-  "target": {
-    "entity_id": ["light.desk_light"]
-  },
-  "data": {}
-}
-```
-
-##### Switch on
-
-v1:
-
-```json
-{
-  "switch.kitchen_fan": {
-    "switch": "on"
-  }
-}
-```
-
-v2:
-
-```json
-{
-  "schema": "v2",
-  "service": "switch.turn_on",
-  "target": {
-    "entity_id": ["switch.kitchen_fan"]
-  },
-  "data": {}
-}
-```
-
-##### Climate mode and temperature
-
-v1:
-
-```json
-{
-  "climate.bedroom_ac": {
-    "mode": "cool",
-    "temperature": 24
-  }
-}
-```
-
-v2 split into one or more native service calls depending on your workflow:
-
-```json
-{
-  "schema": "v2",
-  "service": "climate.set_hvac_mode",
-  "target": {
-    "entity_id": ["climate.bedroom_ac"]
-  },
-  "data": {
-    "hvac_mode": "cool"
-  }
-}
-```
-
-```json
-{
-  "schema": "v2",
-  "service": "climate.set_temperature",
-  "target": {
-    "entity_id": ["climate.bedroom_ac"]
-  },
-  "data": {
-    "temperature": 24
-  }
-}
-```
-
-##### Cover position
-
-v2:
-
-```json
-{
-  "schema": "v2",
-  "service": "cover.set_cover_position",
-  "target": {
-    "entity_id": ["cover.living_room_blind"]
-  },
-  "data": {
-    "position": 50
-  }
-}
-```
-
-##### Fan percentage
-
-v2:
-
-```json
-{
-  "schema": "v2",
-  "service": "fan.turn_on",
-  "target": {
-    "entity_id": ["fan.bedroom_fan"]
-  },
-  "data": {
-    "percentage": 60
-  }
-}
-```
 
 #### Migration checklist
 

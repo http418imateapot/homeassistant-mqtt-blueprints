@@ -43,6 +43,7 @@ Optional `Outcome` can be used for implementation tracking:
 | ADR | Title | Status | Outcome | Date | Related |
 | --- | --- | --- | --- | --- | --- |
 | [ADR-0003](ADR-0003-domain-based-telemetry.md) | Replace Category-Based Telemetry Grouping with Domain-Based Telemetries Array | Accepted | Solved | 2026-06-20 | #3 |
+| [ADR-0004](ADR-0004-schema-v2-first-command-contract.md) | Adopt Schema v2 as the Primary Command Contract | Accepted | Solved | 2026-06-25 | #4 |
 
 ## How to Add a New ADR
 
