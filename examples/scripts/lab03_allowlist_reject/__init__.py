@@ -1,0 +1,1 @@
+"""Lab 03: demonstrate command rejection scenarios."""

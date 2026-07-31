@@ -32,6 +32,25 @@ The CI workflow (`.github/workflows/blueprint-ci.yml`) validates:
 tags like `!input mqtt_base_topic` are parsed correctly instead of failing with
 `yaml.constructor.ConstructorError`.
 
+## Unit Tests
+
+Install the experiment and test dependencies, then run the pytest suite:
+
+```bash
+python -m pip install -r examples/requirements.txt
+python -m pytest tests -q --basetemp=.pytest-tmp
+```
+
+Run one parameterized test case:
+
+```bash
+python -m pytest "tests/test_blueprint_contracts.py::test_blueprints_use_parallel_mode[uploader]" -q --basetemp=.pytest-tmp
+```
+
+The tests cover valid and invalid samples for `tools/check_blueprints.py`, required input defaults,
+parallel execution mode, and trigger contracts in both blueprint YAML files. The guided script and
+Notebook workflow is in [Lab 05](experiments.md#lab-05-unit-testing).
+
 ## Test Payloads and mosquitto_pub Examples
 
 Set your broker parameters first:

@@ -1,0 +1,1 @@
+"""Lab 02: publish schema v2 commands."""
