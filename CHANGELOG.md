@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog,
 and this project follows Semantic Versioning.
 
+## [Unreleased]
+### Changed
+- Restructured documentation: README.md rewritten as a concise overview (why/features/architecture/quick start/limitations); full MQTT topic and payload contract moved to `docs/mqtt-contract.md`; manual test payloads and troubleshooting moved to `docs/testing.md`; release flow moved to `docs/release.md`.
+- Added Traditional Chinese README (`README.zh-TW.md`) with cross-links between language versions.
+- Added telemetry publish and command receive sequence diagrams, a comparison with built-in MQTT Statestream/Discovery, and a Limitations section to the README.
+- CONTRIBUTING.md now carries the local validation commands (moved out of the README).
+
 ## [2.3.0] - 2026-06-29
 ### Added
 - Added `cover`, `fan`, and `lock` support to `mqtt_telemetry_uploader.yaml` telemetry publishing and retained MQTT Discovery metadata.
