@@ -1,0 +1,1 @@
+"""Executable examples for the Home Assistant MQTT blueprints."""

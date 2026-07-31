@@ -1,0 +1,1 @@
+"""Lab 05: learn pytest with this repository's real tests."""

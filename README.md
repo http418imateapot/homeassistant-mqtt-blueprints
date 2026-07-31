@@ -214,6 +214,9 @@ event and heartbeat payloads, and a troubleshooting section are in the
 Repository-level validation (same as CI) is one command pair away; see
 [Local Repository Validation](docs/testing.md#local-repository-validation-same-as-ci).
 
+Runnable script/Notebook labs are under [examples/](examples/), and executable pytest coverage is
+under [tests/](tests/). See the [Experiment Guide](docs/experiments.md) for both run-all and stepwise workflows.
+
 ## Contributing
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines,
@@ -226,6 +229,7 @@ the pull request checklist, and local validation commands, and
 - [Command Schema v1 -> v2 Migration Guide](docs/migration-guide-v1-to-v2.md): schema comparison, migration steps, mapping examples.
 - [Support Matrix](docs/support-matrix.md): Home Assistant, MQTT broker, and per-domain capability support.
 - [Testing Guide](docs/testing.md): manual tests, expected payloads, troubleshooting.
+- [Experiment Guide](docs/experiments.md): paired scripts/Notebooks and unit-testing tutorial.
 - [Release Process](docs/release.md): version files and release flow.
 - [Architecture Decision Records](docs/adr/README.md): design decisions, including
   [ADR-0003 domain-based telemetry](docs/adr/ADR-0003-domain-based-telemetry.md).

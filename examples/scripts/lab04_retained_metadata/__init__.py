@@ -1,0 +1,1 @@
+"""Lab 04: inspect retained discovery and capability metadata."""

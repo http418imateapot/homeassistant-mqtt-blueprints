@@ -6,6 +6,11 @@ The format is based on Keep a Changelog,
 and this project follows Semantic Versioning.
 
 ## [Unreleased]
+### Added
+- Added paired Python/script and Jupyter Notebook labs for telemetry, schema v2 commands, rejection scenarios, retained metadata, and pytest instruction under `examples/`.
+- Added executable pytest coverage for blueprint validation and YAML structure contracts under `tests/`.
+- Added `docs/experiments.md` with run-all, stepwise, expected-output, and troubleshooting guidance.
+
 ### Changed
 - Restructured documentation: README.md rewritten as a concise overview (why/features/architecture/quick start/limitations); full MQTT topic and payload contract moved to `docs/mqtt-contract.md`; manual test payloads and troubleshooting moved to `docs/testing.md`; release flow moved to `docs/release.md`.
 - Added Traditional Chinese README (`README.zh-TW.md`) with cross-links between language versions.

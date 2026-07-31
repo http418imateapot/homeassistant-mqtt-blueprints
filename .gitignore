@@ -63,3 +63,8 @@ Thumbs.db
 __pycache__/
 *.pyc
 .env
+
+# Test and notebook artifacts
+.pytest_cache/
+.pytest-tmp/
+.notebook-output/

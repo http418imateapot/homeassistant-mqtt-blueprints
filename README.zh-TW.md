@@ -209,6 +209,9 @@ event 與 heartbeat payload，以及疑難排解章節，請見[測試指南](do
 儲存庫層級驗證（與 CI 相同）僅需兩個命令；請見
 [本地儲存庫驗證](docs/testing.md#local-repository-validation-same-as-ci)。
 
+可執行的腳本／Jupyter Notebook 實驗位於 [examples/](examples/)，pytest 單元測試位於
+[tests/](tests/)。一鍵與逐步執行方式請見[實驗指南](docs/experiments.md)。
+
 ## 貢獻
 
 歡迎貢獻。請參閱 [CONTRIBUTING.md](CONTRIBUTING.md) 了解貢獻準則、
@@ -221,6 +224,7 @@ Pull Request 檢查清單與本地驗證命令，並參閱
 - [命令 Schema v1 -> v2 遷移指南](docs/migration-guide-v1-to-v2.md)：schema 比較、遷移步驟與對映範例。
 - [支援矩陣](docs/support-matrix.md)：Home Assistant、MQTT broker 與各 domain 能力支援。
 - [測試指南](docs/testing.md)：手動測試、預期 payload、疑難排解。
+- [實驗指南](docs/experiments.md)：成對的腳本／Notebook 與單元測試教學。
 - [發版流程](docs/release.md)：版本檔案與發布流程。
 - [架構決策記錄（ADR）](docs/adr/README.md)：設計決策，包含
   [ADR-0003 domain-based telemetry](docs/adr/ADR-0003-domain-based-telemetry.md)。
