@@ -6,14 +6,11 @@ The format is based on Keep a Changelog,
 and this project follows Semantic Versioning.
 
 ## [Unreleased]
-### Added
-- Added `docs/migration-guide-v1-to-v2.md` as a standalone migration reference for command schema migration and external linking.
-
 ### Changed
-- Expanded `README.md` with a support matrix for Home Assistant, MQTT broker compatibility, and tested domain capability scope.
-- Expanded `README.md` with additional telemetry, command, capability, discovery, heartbeat, and area-targeted command examples.
-- Expanded `README.md` with a documented v1 -> v2 command schema migration guide and migration checklist.
-- Expanded `CONTRIBUTING.md` with project scope, contribution workflow, validation guidance, compatibility expectations, and documentation requirements.
+- Restructured documentation: README.md rewritten as a concise overview (why/features/architecture/quick start/limitations); full MQTT topic and payload contract moved to `docs/mqtt-contract.md`; manual test payloads and troubleshooting moved to `docs/testing.md`; release flow moved to `docs/release.md`.
+- Added Traditional Chinese README (`README.zh-TW.md`) with cross-links between language versions.
+- Added telemetry publish and command receive sequence diagrams, a comparison with built-in MQTT Statestream/Discovery, and a Limitations section to the README.
+- CONTRIBUTING.md now carries the local validation commands (moved out of the README).
 
 ## [2.3.0] - 2026-06-29
 ### Added
