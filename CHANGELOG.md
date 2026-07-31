@@ -11,6 +11,8 @@ and this project follows Semantic Versioning.
 - Added Traditional Chinese README (`README.zh-TW.md`) with cross-links between language versions.
 - Added telemetry publish and command receive sequence diagrams, a comparison with built-in MQTT Statestream/Discovery, and a Limitations section to the README.
 - CONTRIBUTING.md now carries the local validation commands (moved out of the README).
+- Reordered both READMEs to the canonical section layout (why / quick start / architecture / limitations / testing / contributing / license); Quick Start now precedes Architecture and the topic summary is a subsection of Architecture.
+- Moved the Support Matrix from the README to `docs/support-matrix.md` and corrected its discovery component mapping to include `cover`, `fan`, and `lock`.
 
 ## [2.3.0] - 2026-06-29
 ### Added
